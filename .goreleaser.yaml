@@ -1,0 +1,42 @@
+version: 2
+
+project_name: grimora
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: grimora
+    main: ./cmd/grimora
+    binary: grimora
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+archives:
+  - id: grimora
+    builds:
+      - grimora
+    name_template: "grimora_{{ .Os }}_{{ .Arch }}"
+    format: tar.gz
+    files:
+      - none*
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"

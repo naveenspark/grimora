@@ -1,0 +1,180 @@
+package tui
+
+import (
+	"strings"
+	"testing"
+)
+
+func TestEditRuneAddCharacters(t *testing.T) {
+	tests := []struct {
+		name  string
+		start string
+		key   string
+		want  string
+	}{
+		{"append to empty", "", "a", "a"},
+		{"append letter", "hel", "l", "hell"},
+		{"append digit", "abc", "1", "abc1"},
+		{"append space", "hello", " ", "hello "},
+		{"append special", "abc", "!", "abc!"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := editRune(tc.start, tc.key)
+			if got != tc.want {
+				t.Errorf("editRune(%q, %q) = %q, want %q", tc.start, tc.key, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestEditRuneBackspace(t *testing.T) {
+	tests := []struct {
+		name  string
+		start string
+		want  string
+	}{
+		{"backspace on single char", "a", ""},
+		{"backspace on longer string", "hello", "hell"},
+		{"backspace on empty does nothing", "", ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := editRune(tc.start, "backspace")
+			if got != tc.want {
+				t.Errorf("editRune(%q, 'backspace') = %q, want %q", tc.start, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestEditRuneBackspaceMultibyte(t *testing.T) {
+	// Backspace should remove a full rune, not just one byte.
+	// "héllo" ends with 'o' so backspace removes 'o', giving "héll".
+	got := editRune("héllo", "backspace")
+	if got != "héll" {
+		t.Errorf("editRune(multi-byte, backspace) = %q, want %q", got, "héll")
+	}
+
+	// Backspace on a string ending with a multi-byte rune removes that rune cleanly.
+	// "hellé" — backspace removes 'é' (2 bytes), leaving "hell".
+	got2 := editRune("hellé", "backspace")
+	if got2 != "hell" {
+		t.Errorf("editRune ending with multi-byte rune: = %q, want %q", got2, "hell")
+	}
+}
+
+func TestEditRuneIgnoresNonPrintableKeys(t *testing.T) {
+	nonPrintable := []string{
+		"enter",
+		"esc",
+		"up",
+		"down",
+		"left",
+		"right",
+		"ctrl+c",
+		"ctrl+s",
+		"tab",
+		"shift+tab",
+		"f1",
+		"pgup",
+		"pgdown",
+		"home",
+		"end",
+	}
+
+	original := "hello"
+	for _, key := range nonPrintable {
+		t.Run(key, func(t *testing.T) {
+			got := editRune(original, key)
+			if got != original {
+				t.Errorf("editRune(%q, %q) = %q, want unchanged %q", original, key, got, original)
+			}
+		})
+	}
+}
+
+func TestTruncStr(t *testing.T) {
+	tests := []struct {
+		name   string
+		s      string
+		maxLen int
+		want   string
+	}{
+		{"under limit", "hello", 10, "hello"},
+		{"at limit", "hello", 5, "hello"},
+		{"over limit", "hello world", 5, "hell\u2026"},
+		{"empty string", "", 5, ""},
+		{"single char over", "ab", 1, "\u2026"},
+		{"emoji", "\U0001f600\U0001f601\U0001f602", 2, "\U0001f600\u2026"},
+		{"CJK chars", "\u4f60\u597d\u4e16\u754c", 3, "\u4f60\u597d\u2026"},
+		{"multi-byte at boundary", "caf\u00e9s are nice", 5, "caf\u00e9\u2026"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := truncStr(tt.s, tt.maxLen)
+			if got != tt.want {
+				t.Errorf("truncStr(%q, %d) = %q, want %q", tt.s, tt.maxLen, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestEditRuneBackspaceEmoji(t *testing.T) {
+	// Backspace on a string ending with a 4-byte emoji should remove the whole emoji.
+	got := editRune("hello\U0001f600", "backspace")
+	if got != "hello" {
+		t.Errorf("editRune with trailing emoji: got %q, want %q", got, "hello")
+	}
+}
+
+func TestTruncateToHeightLimitsLines(t *testing.T) {
+	input := "line1\nline2\nline3\nline4\nline5\n"
+	result := truncateToHeight(input, 3)
+
+	lines := strings.Count(result, "\n")
+	if lines > 3 {
+		t.Errorf("truncateToHeight(5 lines, 3) produced %d newlines, want <= 3", lines)
+	}
+	if !strings.Contains(result, "line1") {
+		t.Errorf("truncateToHeight result missing first line: %q", result)
+	}
+	if strings.Contains(result, "line4") {
+		t.Errorf("truncateToHeight result should not contain line4: %q", result)
+	}
+}
+
+func TestTruncateToHeightReturnsFullStringWhenWithinLimit(t *testing.T) {
+	input := "line1\nline2\nline3\n"
+	result := truncateToHeight(input, 10)
+	if result != input {
+		t.Errorf("truncateToHeight with maxLines > linecount: got %q, want %q", result, input)
+	}
+}
+
+func TestTruncateToHeightZeroMaxReturnsAll(t *testing.T) {
+	input := "line1\nline2\nline3\nline4\nline5\n"
+	result := truncateToHeight(input, 0)
+	if result != input {
+		t.Errorf("truncateToHeight with maxLines=0 should return input unchanged, got %q", result)
+	}
+}
+
+func TestTruncateToHeightNegativeMaxReturnsAll(t *testing.T) {
+	input := "line1\nline2\n"
+	result := truncateToHeight(input, -1)
+	if result != input {
+		t.Errorf("truncateToHeight with maxLines=-1 should return input unchanged, got %q", result)
+	}
+}
+
+func TestTruncateToHeightExactLimit(t *testing.T) {
+	input := "line1\nline2\nline3\n"
+	result := truncateToHeight(input, 3)
+	// Should include all lines when count equals limit
+	if !strings.Contains(result, "line1") || !strings.Contains(result, "line2") || !strings.Contains(result, "line3") {
+		t.Errorf("truncateToHeight at exact limit dropped lines: %q", result)
+	}
+}
