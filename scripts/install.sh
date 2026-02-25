@@ -103,13 +103,28 @@ echo ""
 success "grimora v${VERSION} installed"
 echo ""
 
-# --- PATH check ---
+# --- PATH setup ---
 case ":$PATH:" in
   *":${INSTALL_DIR}:"*) ;;
   *)
-    printf "  ${DIM}Add to your PATH:${RESET}\n"
-    printf "  ${BOLD}  export PATH=\"\$HOME/.local/bin:\$PATH\"${RESET}\n"
-    echo ""
+    SHELL_NAME=$(basename "$SHELL")
+    case "$SHELL_NAME" in
+      zsh)  RC_FILE="${HOME}/.zshrc" ;;
+      bash) RC_FILE="${HOME}/.bashrc" ;;
+      *)    RC_FILE="" ;;
+    esac
+
+    if [ -n "$RC_FILE" ]; then
+      if ! grep -q '\.local/bin' "$RC_FILE" 2>/dev/null; then
+        printf '\nexport PATH="$HOME/.local/bin:$PATH"\n' >> "$RC_FILE"
+        success "Added ~/.local/bin to PATH in ${RC_FILE##*/}"
+      fi
+      export PATH="${INSTALL_DIR}:${PATH}"
+    else
+      printf "  ${DIM}Add to your PATH:${RESET}\n"
+      printf "  ${BOLD}  export PATH=\"\$HOME/.local/bin:\$PATH\"${RESET}\n"
+      echo ""
+    fi
     ;;
 esac
 
