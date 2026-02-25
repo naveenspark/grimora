@@ -109,8 +109,21 @@ case ":$PATH:" in
   *)
     SHELL_NAME=$(basename "$SHELL")
     case "$SHELL_NAME" in
-      zsh)  RC_FILE="${HOME}/.zshrc" ;;
-      bash) RC_FILE="${HOME}/.bashrc" ;;
+      zsh)
+        # macOS Terminal.app opens login shells — .zprofile is more reliable than .zshrc
+        if [ "$OS" = "darwin" ]; then
+          RC_FILE="${HOME}/.zprofile"
+        else
+          RC_FILE="${HOME}/.zshrc"
+        fi
+        ;;
+      bash)
+        if [ "$OS" = "darwin" ]; then
+          RC_FILE="${HOME}/.bash_profile"
+        else
+          RC_FILE="${HOME}/.bashrc"
+        fi
+        ;;
       *)    RC_FILE="" ;;
     esac
 
