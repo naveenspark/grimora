@@ -442,7 +442,6 @@ func (m threadsModel) renderConvoInput() string {
 	sep := chatSepStyle.Render(" · ")
 	namePart := renderAnimatedYou(m.cursorOn)
 	if !m.inputFocused {
-		namePart = chatInputNameStyle.Render("you")
 		if m.input == "" {
 			return timeIndent + namePart + sep + inputPlaceholderStyle.Render("type a message...")
 		}

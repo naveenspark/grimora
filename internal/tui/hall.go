@@ -344,9 +344,7 @@ func (m hallModel) Update(msg tea.Msg) (hallModel, tea.Cmd) {
 		return m, m.loadMessages()
 
 	case cursorBlinkMsg:
-		if m.inputFocused {
-			m.cursorOn = !m.cursorOn
-		}
+		m.cursorOn = !m.cursorOn
 		return m, cursorBlinkCmd()
 
 	case hallAnimTickMsg:
@@ -900,7 +898,6 @@ func (m hallModel) renderInput() string {
 		placeholder = "grimora login to chat"
 	}
 	if !m.inputFocused {
-		namePart = chatInputNameStyle.Render("you")
 		if m.input == "" {
 			return timeIndent + namePart + sep + inputPlaceholderStyle.Render(placeholder)
 		}

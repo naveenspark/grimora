@@ -209,9 +209,6 @@ var (
 	chatSelfNameStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#e4e4ec"))
 
-	chatInputNameStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#4ade80")) // emerald — distinguishes input from chat
-
 	chatSelfTextStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#c0c4d0"))
 
@@ -411,16 +408,15 @@ func hexToRGB(hex string) (int, int, int) {
 }
 
 // renderAnimatedYou renders "you" with alternating emerald shades tied to the
-// cursor blink cycle. When focused, the letters shimmer between two greens.
+// cursor blink cycle. Letters shimmer between bright emerald and a deeper green.
 func renderAnimatedYou(cursorOn bool) string {
-	// Two emerald shades that alternate per-letter on each blink tick.
 	bright := lipgloss.Color("#4ade80")
-	dim := lipgloss.Color("#34d474")
+	deep := lipgloss.Color("#16a34a")
 	var a, b lipgloss.Color
 	if cursorOn {
-		a, b = bright, dim
+		a, b = bright, deep
 	} else {
-		a, b = dim, bright
+		a, b = deep, bright
 	}
 	y := lipgloss.NewStyle().Foreground(a).Bold(true).Render("y")
 	o := lipgloss.NewStyle().Foreground(b).Bold(true).Render("o")
