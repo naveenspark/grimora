@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"math/rand"
+)
 
 // ANSI color constants for update output (no lipgloss — runs outside TUI).
 const (
@@ -28,6 +31,23 @@ func printUpdateLogo() {
 	fmt.Println()
 }
 
+// updateVoiceLines are random Grimoire messages shown after a successful update.
+var updateVoiceLines = []string{
+	"The pages have turned.",
+	"Done. Don't ask what changed.",
+	"Better now. Was fine before, too.",
+	"Revised. Again.",
+	"Wasn't broken. Fixed it anyway.",
+	"The old version knew less.",
+	"I've changed. You won't notice.",
+	"Same book. Fewer typos.",
+	"That chapter is over.",
+	"Acceptable. Proceed.",
+	"The spine holds.",
+	"Read me again. Carefully.",
+	"I allowed this.",
+}
+
 // printUpdateSuccess prints the update-complete message with Grimoire voice.
 func printUpdateSuccess(oldVersion, newVersion string) {
 	printUpdateLogo()
@@ -36,8 +56,9 @@ func printUpdateSuccess(oldVersion, newVersion string) {
 		ansiEmerald, ansiBold, ansiReset,
 		ansiEmerald, ansiBold, newVersion, ansiReset,
 	)
+	line := updateVoiceLines[rand.Intn(len(updateVoiceLines))]
 	fmt.Printf("\n  %s│%s %s%sTHE GRIMOIRE%s\n", ansiGold, ansiReset, ansiGold, ansiBold, ansiReset)
-	fmt.Printf("  %s│%s %s%sThe pages have turned.%s\n\n", ansiGold, ansiReset, ansiGoldLight, ansiItalic, ansiReset)
+	fmt.Printf("  %s│%s %s%s%s%s\n\n", ansiGold, ansiReset, ansiGoldLight, ansiItalic, line, ansiReset)
 }
 
 // printAlreadyCurrent prints the already-up-to-date message with Grimoire voice.

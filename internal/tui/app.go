@@ -426,9 +426,9 @@ func (a App) View() string {
 		help = " " + helpEntry("j/k", "nav") + "  " + helpEntry("enter", "open") + "  " + helpEntry("esc", "close")
 	}
 
-	// Truncate help bar to fit width (ANSI-safe).
+	// Truncate help bar to fit width — drop trailing entries instead of cutting mid-word.
 	if lipgloss.Width(help) > a.width {
-		help = lipgloss.NewStyle().MaxWidth(a.width).Render(help)
+		help = truncateHelpBar(help, a.width)
 	}
 
 	// Chrome budget: header(2) + tabs(1) + help(1) = 4 lines + body
@@ -436,4 +436,24 @@ func (a App) View() string {
 	body = strings.TrimRight(truncateToHeight(body, a.height-chrome), "\n")
 
 	return fmt.Sprintf("%s\n%s\n%s\n%s", header, centeredTabs, body, help)
+}
+
+// truncateHelpBar drops trailing help entries (separated by "  ") that would
+// overflow the given width, instead of cutting mid-word.
+func truncateHelpBar(help string, maxWidth int) string {
+	// Split on double-space separators between help entries.
+	parts := strings.Split(help, "  ")
+	var result string
+	for i, part := range parts {
+		candidate := result
+		if i > 0 {
+			candidate += "  "
+		}
+		candidate += part
+		if lipgloss.Width(candidate) > maxWidth {
+			break
+		}
+		result = candidate
+	}
+	return result
 }

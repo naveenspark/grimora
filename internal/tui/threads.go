@@ -440,7 +440,7 @@ func (m threadsModel) renderConvoInput() string {
 	const timeIndent = "           " // 11 spaces — matches " " + 8-char timestamp + "  "
 
 	sep := chatSepStyle.Render(" · ")
-	namePart := chatSelfNameStyle.Render("you")
+	namePart := chatInputNameStyle.Render("you")
 	if !m.inputFocused {
 		if m.input == "" {
 			return timeIndent + namePart + sep + inputPlaceholderStyle.Render("type a message...")

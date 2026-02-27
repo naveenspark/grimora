@@ -209,6 +209,9 @@ var (
 	chatSelfNameStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#e4e4ec"))
 
+	chatInputNameStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#4ade80")) // emerald — distinguishes input from chat
+
 	chatSelfTextStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#c0c4d0"))
 

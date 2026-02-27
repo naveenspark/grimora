@@ -894,7 +894,7 @@ func (m hallModel) renderInput() string {
 	const timeIndent = "           " // 11 spaces — matches " " + 8-char timestamp + "  "
 
 	sep := chatSepStyle.Render(" · ")
-	namePart := chatSelfNameStyle.Render("you")
+	namePart := chatInputNameStyle.Render("you")
 	placeholder := "say something..."
 	if m.myLogin == "" {
 		placeholder = "grimora login to chat"
