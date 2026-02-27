@@ -345,6 +345,48 @@ func TestHallViewLineCount(t *testing.T) {
 			},
 			wantLen: 24,
 		},
+		{
+			name: "slash hints visible with cursor",
+			setup: func(m *hallModel) {
+				m.myLogin = "naveenspark"
+				m.connected = true
+				m.input = "/"
+				m.cursorOn = true
+				for i := 0; i < 5; i++ {
+					id := fmt.Sprintf("msg-%d", i)
+					m.seenIDs[id] = true
+					m.messages = append(m.messages, chatMessage{
+						ID: id, SenderLogin: "alice", Body: "hi",
+						Kind: "message", CreatedAt: time.Now(),
+					})
+				}
+			},
+			wantLen: 24,
+		},
+		{
+			name: "project autocomplete visible with cursor",
+			setup: func(m *hallModel) {
+				m.myLogin = "naveenspark"
+				m.connected = true
+				m.input = "#"
+				m.cursorOn = true
+				m.projectActive = true
+				m.projectQuery = ""
+				m.myProjects = []domain.WorkshopProject{
+					{Name: "Grimora"}, {Name: "Clawzempic"},
+				}
+				m.projectMatches = m.myProjects
+				for i := 0; i < 5; i++ {
+					id := fmt.Sprintf("msg-%d", i)
+					m.seenIDs[id] = true
+					m.messages = append(m.messages, chatMessage{
+						ID: id, SenderLogin: "alice", Body: "hi",
+						Kind: "message", CreatedAt: time.Now(),
+					})
+				}
+			},
+			wantLen: 24,
+		},
 	}
 
 	for _, tc := range tests {

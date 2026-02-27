@@ -73,6 +73,12 @@ type hallSendMsg struct {
 	err error
 }
 
+// hallProjectsMsg carries the user's workshop projects for # autocomplete.
+type hallProjectsMsg struct {
+	projects []domain.WorkshopProject
+	err      error
+}
+
 // reactionCount is an emoji + count for display.
 type reactionCount struct {
 	Emoji string
@@ -128,6 +134,13 @@ type hallModel struct {
 	mentionQuery   string
 	mentionMatches []string
 	mentionCursor  int
+
+	// #project autocomplete state
+	projectActive  bool
+	projectQuery   string
+	projectMatches []domain.WorkshopProject
+	projectCursor  int
+	myProjects     []domain.WorkshopProject
 }
 
 func newHallModel(c *client.Client) hallModel {
@@ -139,7 +152,19 @@ func newHallModel(c *client.Client) hallModel {
 }
 
 func (m hallModel) Init() tea.Cmd {
-	return tea.Batch(m.loadMessages(), cursorBlinkCmd(), hallAnimTickCmd())
+	return tea.Batch(m.loadMessages(), m.loadProjects(), cursorBlinkCmd(), hallAnimTickCmd())
+}
+
+// loadProjects fetches the user's workshop projects for # autocomplete.
+func (m hallModel) loadProjects() tea.Cmd {
+	c := m.client
+	if c == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		projects, err := c.ListWorkshopProjects(context.Background())
+		return hallProjectsMsg{projects: projects, err: err}
+	}
 }
 
 // hallSlug is the default public chat room.
@@ -301,6 +326,12 @@ func (m hallModel) Update(msg tea.Msg) (hallModel, tea.Cmd) {
 		}
 		return m, nil
 
+	case hallProjectsMsg:
+		if msg.err == nil {
+			m.myProjects = msg.projects
+		}
+		return m, nil
+
 	case hallSendMsg:
 		if msg.err != nil {
 			m.status = "error: " + msg.err.Error()
@@ -434,6 +465,77 @@ func (m hallModel) updateInput(msg tea.KeyMsg) (hallModel, tea.Cmd) {
 		}
 	}
 
+	// --- Project autocomplete active ---
+	if m.projectActive {
+		switch key {
+		case "tab", "enter":
+			if len(m.projectMatches) > 0 {
+				selected := m.projectMatches[m.projectCursor]
+				tag := strings.Fields(selected.Name)[0]
+				m.input = strings.TrimSuffix(m.input, "#"+m.projectQuery) + "#" + tag + " "
+			}
+			m.projectActive = false
+			m.projectQuery = ""
+			m.projectMatches = nil
+			m.projectCursor = 0
+			return m, nil
+		case "up":
+			if m.projectCursor > 0 {
+				m.projectCursor--
+			}
+			return m, nil
+		case "down":
+			if m.projectCursor < len(m.projectMatches)-1 {
+				m.projectCursor++
+			}
+			return m, nil
+		case "esc", " ":
+			if key == " " {
+				m.input += " "
+			}
+			m.projectActive = false
+			m.projectQuery = ""
+			m.projectMatches = nil
+			m.projectCursor = 0
+			return m, nil
+		case "backspace":
+			if m.projectQuery == "" {
+				m.input = strings.TrimSuffix(m.input, "#")
+				m.projectActive = false
+				m.projectQuery = ""
+				m.projectMatches = nil
+				m.projectCursor = 0
+			} else {
+				m.projectQuery = editRune(m.projectQuery, "backspace")
+				m.input = editRune(m.input, "backspace")
+				m.projectMatches = m.filterProjects(m.projectQuery)
+				m.projectCursor = 0
+				if len(m.projectMatches) == 0 {
+					m.projectActive = false
+					m.projectQuery = ""
+					m.projectMatches = nil
+					m.projectCursor = 0
+				}
+			}
+			return m, nil
+		default:
+			if len(key) == 1 {
+				m.projectQuery += key
+				m.input += key
+				m.projectMatches = m.filterProjects(m.projectQuery)
+				m.projectCursor = 0
+				if len(m.projectMatches) == 0 {
+					m.projectActive = false
+					m.projectQuery = ""
+					m.projectMatches = nil
+					m.projectCursor = 0
+				}
+				return m, nil
+			}
+			return m, nil
+		}
+	}
+
 	// --- Normal input handling ---
 	switch key {
 	case "esc":
@@ -452,7 +554,12 @@ func (m hallModel) updateInput(msg tea.KeyMsg) (hallModel, tea.Cmd) {
 		}
 		m.input = ""
 		m.status = ""
-		return m, m.sendRoomMessage(body)
+		cmds := []tea.Cmd{m.sendRoomMessage(body)}
+		// Refresh projects after /build so # picks it up
+		if strings.HasPrefix(body, "/build ") {
+			cmds = append(cmds, m.loadProjects())
+		}
+		return m, tea.Batch(cmds...)
 
 	case "@":
 		m.input += "@"
@@ -462,6 +569,16 @@ func (m hallModel) updateInput(msg tea.KeyMsg) (hallModel, tea.Cmd) {
 		m.mentionCursor = 0
 		if len(m.mentionMatches) == 0 {
 			m.mentionActive = false
+		}
+		return m, nil
+
+	case "#":
+		m.input += "#"
+		if len(m.myProjects) > 0 {
+			m.projectActive = true
+			m.projectQuery = ""
+			m.projectMatches = m.filterProjects("")
+			m.projectCursor = 0
 		}
 		return m, nil
 
@@ -505,7 +622,10 @@ func (m hallModel) View() string {
 	if m.status != "" {
 		chrome++
 	}
-	// Autocomplete popup steals lines from the message viewport.
+	// Slash hints and autocomplete popups steal lines from the message viewport.
+	if strings.HasPrefix(m.input, "/") && m.inputFocused {
+		chrome += m.countSlashHints()
+	}
 	mentionLines := 0
 	if m.mentionActive && len(m.mentionMatches) > 0 {
 		mentionLines = len(m.mentionMatches)
@@ -513,6 +633,13 @@ func (m hallModel) View() string {
 			mentionLines = 5
 		}
 		chrome += mentionLines
+	}
+	if m.projectActive && len(m.projectMatches) > 0 {
+		projectLines := len(m.projectMatches)
+		if projectLines > 5 {
+			projectLines = 5
+		}
+		chrome += projectLines
 	}
 	viewportHeight := m.height - chrome
 	if viewportHeight < 2 {
@@ -541,6 +668,11 @@ func (m hallModel) View() string {
 	// --- Mention autocomplete popup ---
 	if m.mentionActive && len(m.mentionMatches) > 0 {
 		b.WriteString(m.renderMentionPopup())
+	}
+
+	// --- Project autocomplete popup ---
+	if m.projectActive && len(m.projectMatches) > 0 {
+		b.WriteString(m.renderProjectPopup())
 	}
 
 	// --- Presence line (username + online count) ---
@@ -803,6 +935,20 @@ var slashCommands = []struct {
 	{"/seek <question>", "ask for help"},
 }
 
+// countSlashHints returns the number of slash hint lines that will be rendered.
+func (m hallModel) countSlashHints() int {
+	prefix := strings.TrimPrefix(m.input, "/")
+	n := 0
+	for _, sc := range slashCommands {
+		trimmedCmd := strings.TrimPrefix(sc.cmd, "/")
+		if prefix != "" && !strings.HasPrefix(trimmedCmd, prefix) {
+			continue
+		}
+		n++
+	}
+	return n
+}
+
 // renderSlashHints renders slash command hints above the input when typing "/".
 func (m hallModel) renderSlashHints() string {
 	prefix := strings.TrimPrefix(m.input, "/")
@@ -831,6 +977,37 @@ func (m hallModel) renderMentionPopup() string {
 			b.WriteString("   " + accentStyle.Render("▸ "+login))
 		} else {
 			b.WriteString("     " + dimStyle.Render(login))
+		}
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
+// filterProjects returns projects matching the query prefix (case-insensitive).
+func (m hallModel) filterProjects(query string) []domain.WorkshopProject {
+	q := strings.ToLower(query)
+	var matches []domain.WorkshopProject
+	for _, p := range m.myProjects {
+		if q == "" || strings.Contains(strings.ToLower(p.Name), q) {
+			matches = append(matches, p)
+		}
+	}
+	return matches
+}
+
+// renderProjectPopup renders the project autocomplete suggestion list.
+func (m hallModel) renderProjectPopup() string {
+	var b strings.Builder
+	limit := len(m.projectMatches)
+	if limit > 5 {
+		limit = 5
+	}
+	for i := 0; i < limit; i++ {
+		name := m.projectMatches[i].Name
+		if i == m.projectCursor {
+			b.WriteString("   " + goldStyle.Render("▸ #"+name))
+		} else {
+			b.WriteString("     " + dimStyle.Render("#"+name))
 		}
 		b.WriteByte('\n')
 	}
