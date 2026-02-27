@@ -497,12 +497,9 @@ func (m hallModel) updateNav(msg tea.KeyMsg) (hallModel, tea.Cmd) {
 func (m hallModel) View() string {
 	var b strings.Builder
 
-	// Reserve lines: 1 header + (0 or 1 roster) + 1 separator + 1 topic + 1 input + (0 or 1 status) + autocomplete.
-	hasRoster := m.presenceCount > 0 && len(m.presenceLogins) > 0
-	chrome := 4
-	if hasRoster {
-		chrome = 5
-	}
+	// Reserve lines: 1 input + (0 or 1 status) + autocomplete.
+	// Tab bar already shows "Hall ●N" — no redundant header needed.
+	chrome := 1 // input
 	if m.status != "" {
 		chrome++
 	}
@@ -520,44 +517,16 @@ func (m hallModel) View() string {
 		viewportHeight = 2
 	}
 
-	// --- Header ---
-	b.WriteString(" ")
-	b.WriteString(presenceTitleStyle.Render("The Hall"))
-	if !m.connected && m.err == "" {
-		b.WriteString("  " + dimStyle.Render("· connecting..."))
-	} else if m.err != "" {
-		b.WriteString("  " + dimStyle.Render("· could not connect"))
-	} else if hasRoster {
-		b.WriteString("  " + presenceDotStyle.Render("●") + " " + dimStyle.Render(fmt.Sprintf("%d here", m.presenceCount)))
-	} else {
-		b.WriteString("  " + dimStyle.Render("· connected"))
-	}
-	b.WriteByte('\n')
-
-	// --- Presence roster ---
-	if hasRoster {
-		names := strings.Join(m.presenceLogins, dimStyle.Render(", "))
-		b.WriteString("   " + dimStyle.Render(names) + "\n")
-	}
-
-	// --- Separator ---
-	sep := strings.Repeat("─", max(m.width-2, 4))
-	b.WriteString(" " + metaStyle.Render(sep) + "\n")
-
-	// --- Topic line ---
-	b.WriteString(" " + chatSysStyle.Render("the fire's always lit. talk shop, share what you're building, or just lurk.") + "\n")
-
 	// --- Message area ---
-	if m.myLogin == "" && !m.connected {
-		// Not authed or not yet loaded.
+	if m.err != "" && len(m.messages) == 0 {
 		padLines(viewportHeight, &b)
-		b.WriteString(" " + dimStyle.Render("run: grimora login") + "\n")
+		b.WriteString(" " + dimStyle.Render("could not connect · check your connection or run: grimora login") + "\n")
+	} else if m.myLogin == "" && !m.connected {
+		padLines(viewportHeight, &b)
+		b.WriteString(" " + dimStyle.Render("connecting...") + "\n")
 	} else if len(m.messages) == 0 && m.err == "" {
 		padLines(viewportHeight, &b)
 		b.WriteString(" " + dimStyle.Render("no messages yet") + "\n")
-	} else if m.err != "" && len(m.messages) == 0 {
-		padLines(viewportHeight, &b)
-		b.WriteString(" " + dimStyle.Render("could not load messages · check your connection or run: grimora login") + "\n")
 	} else {
 		b.WriteString(m.renderMessages(viewportHeight))
 	}
@@ -649,13 +618,13 @@ func (m hallModel) renderMessage(msg chatMessage) string {
 	// Rich message rendering by kind
 	switch msg.Kind {
 	case "build-start":
-		return m.renderBuildStartCard(msg)
+		return m.renderBuildStart(msg)
 	case "build-update":
 		return m.renderBuildUpdate(msg)
 	case "ship":
 		return m.renderShipCard(msg)
 	case "seek":
-		return m.renderSeekCard(msg)
+		return m.renderSeek(msg)
 	case "forge-verdict":
 		return m.renderForgeVerdict(msg)
 	case "cast":
@@ -717,19 +686,13 @@ func (m hallModel) renderPlainMessage(msg chatMessage) string {
 	return result
 }
 
-// renderBuildStartCard renders a multi-line build-start card with animation.
-func (m hallModel) renderBuildStartCard(msg chatMessage) string {
-	const color = "#f59e0b" // orange
+// renderBuildStart renders a compact build-start line.
+func (m hallModel) renderBuildStart(msg chatMessage) string {
 	title := msg.metaTitle()
-	label := forgeStyle.Render("🔨 " + msg.SenderLogin + " started a build")
-	top := cardBorder("top", label, color, msg.animFrame, m.width)
-	bar := forgeStyle.Render(" │")
-	body := bar + "  " + goldStyle.Render(truncStr(cleanTitle(title), 60))
-	bottom := cardBorder("bottom", "", color, msg.animFrame, m.width)
-	return top + "\n" + body + "\n" + bottom
+	return " " + forgeStyle.Render("🔨") + " " + forgeStyle.Render(msg.SenderLogin) + " started a build · " + dimStyle.Render(truncStr(cleanTitle(title), 50))
 }
 
-// renderShipCard renders a multi-line ship card with animation.
+// renderShipCard renders a multi-line ship card with animation (the only box card).
 func (m hallModel) renderShipCard(msg chatMessage) string {
 	const color = "#d4a844" // gold
 	title := msg.metaTitle()
@@ -741,24 +704,9 @@ func (m hallModel) renderShipCard(msg chatMessage) string {
 	return top + "\n" + body + "\n" + bottom
 }
 
-// renderSeekCard renders a multi-line seek card with animation.
-func (m hallModel) renderSeekCard(msg chatMessage) string {
-	const color = "#d4a844" // gold
-	label := goldStyle.Render("✧ SEEK from " + msg.SenderLogin)
-	top := cardBorder("top", label, color, msg.animFrame, m.width)
-	bar := goldStyle.Render(" │")
-	bodyWidth := m.width - 8
-	if bodyWidth < 20 {
-		bodyWidth = 20
-	}
-	wrapped := lipgloss.NewStyle().Width(bodyWidth).Render(msg.Body)
-	lines := strings.Split(wrapped, "\n")
-	var bodyLines []string
-	for _, line := range lines {
-		bodyLines = append(bodyLines, bar+"  "+chatTextStyle.Render(line))
-	}
-	bottom := cardBorder("bottom", "", color, msg.animFrame, m.width)
-	return top + "\n" + strings.Join(bodyLines, "\n") + "\n" + bottom
+// renderSeek renders a compact seek line.
+func (m hallModel) renderSeek(msg chatMessage) string {
+	return " " + dimStyle.Render("✧") + " " + goldStyle.Render(msg.SenderLogin) + " seeks · " + chatTextStyle.Render(truncStr(msg.Body, 60))
 }
 
 // renderBuildUpdate renders a compact build update (no box).
@@ -766,44 +714,34 @@ func (m hallModel) renderBuildUpdate(msg chatMessage) string {
 	return "   " + accentStyle.Render("⚡") + " " + accentStyle.Render(msg.SenderLogin) + " · " + dimStyle.Render(msg.Body)
 }
 
-// renderForgeVerdict renders a multi-line forge verdict card with animation.
+// renderForgeVerdict renders a compact forge verdict line.
 func (m hallModel) renderForgeVerdict(msg chatMessage) string {
-	const color = "#34d474" // green
 	title := msg.metaTitle()
 	potency := msg.Metadata["potency"]
-	pStr := ""
+	line := " " + accentStyle.Render("⚡") + " " + accentStyle.Render(msg.SenderLogin) + " forged · " + goldStyle.Render(`"`+truncStr(cleanTitle(title), 50)+`"`)
 	if potency != "" {
-		pStr = " P" + potency
+		line += " " + potencyStyle(potencyFromStr(potency)).Render("P"+potency)
 	}
-	label := accentStyle.Render("⚡ " + msg.SenderLogin + " forged" + pStr)
-	top := cardBorder("top", label, color, msg.animFrame, m.width)
-	bar := accentStyle.Render(" │")
-	body := bar + "  " + goldStyle.Render(`"`+truncStr(cleanTitle(title), 55)+`"`)
-	if potency != "" {
-		body += " " + potencyStyle(potencyFromStr(potency)).Render("P"+potency)
-	}
-	bottom := cardBorder("bottom", "", color, msg.animFrame, m.width)
-	return top + "\n" + body + "\n" + bottom
+	return line
 }
 
-// renderCast renders a multi-line Grimoire cast card with animation.
+// renderCast renders a compact Grimoire cast line.
 func (m hallModel) renderCast(msg chatMessage) string {
-	const color = "#22d3ee" // cyan
-	label := castStyle.Render("✦ Grimoire")
-	top := cardBorder("top", label, color, msg.animFrame, m.width)
-	bar := castStyle.Render(" │")
-	bodyWidth := m.width - 8
+	label := grimLabelStyle.Render("Grimoire:")
+	bodyWidth := m.width - 16
 	if bodyWidth < 20 {
 		bodyWidth = 20
 	}
 	wrapped := lipgloss.NewStyle().Width(bodyWidth).Render(msg.Body)
 	lines := strings.Split(wrapped, "\n")
-	var bodyLines []string
-	for _, line := range lines {
-		bodyLines = append(bodyLines, bar+"  "+grimVoiceStyle.Render(line))
+	result := " " + castStyle.Render("✦") + " " + label + " " + grimVoiceStyle.Render(lines[0])
+	if len(lines) > 1 {
+		indent := strings.Repeat(" ", 15)
+		for _, line := range lines[1:] {
+			result += "\n" + indent + grimVoiceStyle.Render(line)
+		}
 	}
-	bottom := cardBorder("bottom", "", color, msg.animFrame, m.width)
-	return top + "\n" + strings.Join(bodyLines, "\n") + "\n" + bottom
+	return result
 }
 
 // potencyFromStr converts a string potency to int, defaulting to 1.
