@@ -344,7 +344,7 @@ func (m hallModel) Update(msg tea.Msg) (hallModel, tea.Cmd) {
 		return m, m.loadMessages()
 
 	case cursorBlinkMsg:
-		m.animFrame = (m.animFrame + 1) % 3
+		m.animFrame++
 		return m, cursorBlinkCmd()
 
 	case hallAnimTickMsg:
@@ -780,7 +780,7 @@ func (m hallModel) renderPlainMessage(msg chatMessage) string {
 
 	var namePart string
 	if msg.IsSelf {
-		namePart = chatSelfNameStyle.Render("you")
+		namePart = chatSelfNameStyle.Render(msg.SenderLogin)
 	} else {
 		name := msg.SenderLogin
 		if msg.SenderGuild != "" {
@@ -892,7 +892,7 @@ func (m hallModel) renderInput() string {
 	const timeIndent = "           " // 11 spaces — matches " " + 8-char timestamp + "  "
 
 	sep := chatSepStyle.Render(" · ")
-	namePart := renderAnimatedYou(m.animFrame)
+	namePart := renderAnimatedName(m.myLogin, m.animFrame)
 	placeholder := "say something..."
 	if m.myLogin == "" {
 		placeholder = "grimora login to chat"

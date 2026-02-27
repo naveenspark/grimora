@@ -57,9 +57,9 @@ func TestHallSelfMessageHighlightedDifferently(t *testing.T) {
 	m, _ = m.Update(hallMessagesMsg{messages: msgs})
 
 	view := m.View()
-	// Self message should render "you" instead of login
-	if !strings.Contains(view, "you") {
-		t.Errorf("expected 'you' for self message in hall view, got:\n%s", view)
+	// Self message should render the login name
+	if !strings.Contains(view, "me") {
+		t.Errorf("expected self login 'me' in hall view, got:\n%s", view)
 	}
 }
 
@@ -248,8 +248,8 @@ func TestHallRenderMessageSelf(t *testing.T) {
 	}
 
 	rendered := m.renderMessage(selfMsg)
-	if !strings.Contains(rendered, "you") {
-		t.Errorf("expected 'you' for self message render, got: %q", rendered)
+	if !strings.Contains(rendered, "me") {
+		t.Errorf("expected self login 'me' in rendered message, got: %q", rendered)
 	}
 	if !strings.Contains(rendered, "My message body") {
 		t.Errorf("expected body in self message render, got: %q", rendered)

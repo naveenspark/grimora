@@ -407,27 +407,41 @@ func hexToRGB(hex string) (int, int, int) {
 	return r, g, b
 }
 
-// renderAnimatedYou renders "you" with a 3-frame sweep animation.
-// A bright highlight moves left-to-right across the three letters.
-func renderAnimatedYou(frame int) string {
-	bright := lipgloss.Color("#4ade80")
-	mid := lipgloss.Color("#22c55e")
-	deep := lipgloss.Color("#16a34a")
-
-	// Sweep pattern: highlight travels y → o → u
-	var yc, oc, uc lipgloss.Color
-	switch frame % 3 {
-	case 0: // highlight on y
-		yc, oc, uc = bright, mid, deep
-	case 1: // highlight on o
-		yc, oc, uc = deep, bright, mid
-	default: // highlight on u
-		yc, oc, uc = mid, deep, bright
+// renderAnimatedName renders a name with a sweep animation.
+// A bright highlight moves left-to-right across the letters, wrapping around.
+func renderAnimatedName(name string, frame int) string {
+	if name == "" {
+		name = "you"
 	}
-	y := lipgloss.NewStyle().Foreground(yc).Bold(true).Render("y")
-	o := lipgloss.NewStyle().Foreground(oc).Bold(true).Render("o")
-	u := lipgloss.NewStyle().Foreground(uc).Bold(true).Render("u")
-	return y + o + u
+	n := len(name)
+
+	type rgb = [3]int
+	bright := rgb{74, 222, 128}
+	mid := rgb{34, 197, 94}
+	deep := rgb{22, 163, 74}
+
+	var out string
+	for i := 0; i < n; i++ {
+		// Distance from the highlight position (wrapping)
+		dist := (i - frame%n + n) % n
+
+		var c rgb
+		switch dist {
+		case 0:
+			c = bright
+		case 1:
+			c = mid
+		default:
+			if dist == n-1 {
+				c = mid
+			} else {
+				c = deep
+			}
+		}
+		hex := fmt.Sprintf("#%02X%02X%02X", c[0], c[1], c[2])
+		out += lipgloss.NewStyle().Foreground(lipgloss.Color(hex)).Bold(true).Render(string(name[i]))
+	}
+	return out
 }
 
 // helpEntry renders a single "key label" pair for help bars.

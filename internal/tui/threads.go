@@ -185,7 +185,7 @@ func (m threadsModel) Update(msg tea.Msg) (threadsModel, tea.Cmd) {
 
 	case cursorBlinkMsg:
 		if m.inputFocused {
-			m.animFrame = (m.animFrame + 1) % 3
+			m.animFrame++
 		}
 		return m, cursorBlinkCmd()
 
@@ -409,7 +409,7 @@ func (m threadsModel) renderThreadMessage(msg domain.Message) string {
 	var namePart string
 	isSelf := msg.SenderLogin == m.myLogin
 	if isSelf {
-		namePart = chatSelfNameStyle.Render("you")
+		namePart = chatSelfNameStyle.Render(msg.SenderLogin)
 	} else {
 		namePart = GuildStyle(m.openThreadGuild).Render(msg.SenderLogin)
 	}
@@ -440,7 +440,7 @@ func (m threadsModel) renderConvoInput() string {
 	const timeIndent = "           " // 11 spaces — matches " " + 8-char timestamp + "  "
 
 	sep := chatSepStyle.Render(" · ")
-	namePart := renderAnimatedYou(m.animFrame)
+	namePart := renderAnimatedName(m.myLogin, m.animFrame)
 	if !m.inputFocused {
 		if m.input == "" {
 			return timeIndent + namePart + sep + inputPlaceholderStyle.Render("type a message...")
