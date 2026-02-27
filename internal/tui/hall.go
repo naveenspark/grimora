@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"sort"
@@ -57,16 +58,34 @@ type hallSendMsg struct {
 	err error
 }
 
+// reactionCount is an emoji + count for display.
+type reactionCount struct {
+	Emoji string
+	Count int
+}
+
 // chatMessage is a rendered message ready for display.
 type chatMessage struct {
 	ID          string
 	SenderLogin string
 	SenderGuild string
 	Body        string
+	Kind        string
+	Metadata    map[string]string
 	CreatedAt   time.Time
 	IsSystem    bool
 	IsGrimoire  bool
 	IsSelf      bool
+	Reactions   []reactionCount
+	// Animation state (Phase 5)
+	animFrame int
+	animStart time.Time
+}
+
+// hallReactionsMsg carries batch reaction counts from the API.
+type hallReactionsMsg struct {
+	reactions map[string][]reactionCount
+	err       error
 }
 
 // hallModel is the Hall (group chat) tab model.
@@ -98,10 +117,8 @@ type hallModel struct {
 
 func newHallModel(c *client.Client) hallModel {
 	return hallModel{
-		client:       c,
-		seenIDs:      make(map[string]bool),
-		inputFocused: true, // default: typing goes straight to input
-		cursorOn:     true,
+		client:  c,
+		seenIDs: make(map[string]bool),
 	}
 }
 
@@ -138,6 +155,30 @@ func (m hallModel) sendRoomMessage(body string) tea.Cmd {
 	}
 }
 
+// loadReactions fetches reaction counts for all currently loaded messages.
+func (m hallModel) loadReactions() tea.Cmd {
+	c := m.client
+	ids := make([]string, 0, len(m.messages))
+	for _, msg := range m.messages {
+		ids = append(ids, msg.ID)
+	}
+	return func() tea.Msg {
+		counts, err := c.GetReactionCounts(context.Background(), hallSlug, ids)
+		if err != nil {
+			return hallReactionsMsg{err: err}
+		}
+		result := make(map[string][]reactionCount, len(counts))
+		for msgID, rcs := range counts {
+			converted := make([]reactionCount, len(rcs))
+			for i, rc := range rcs {
+				converted[i] = reactionCount{Emoji: rc.Emoji, Count: rc.Count}
+			}
+			result[msgID] = converted
+		}
+		return hallReactionsMsg{reactions: result}
+	}
+}
+
 func (m hallModel) Update(msg tea.Msg) (hallModel, tea.Cmd) {
 	switch msg := msg.(type) {
 
@@ -171,14 +212,35 @@ func (m hallModel) Update(msg tea.Msg) (hallModel, tea.Cmd) {
 				continue
 			}
 			m.seenIDs[id] = true
+
+			// Parse metadata JSON
+			var meta map[string]string
+			if len(raw.Metadata) > 0 {
+				_ = json.Unmarshal(raw.Metadata, &meta) //nolint:errcheck // best-effort parse
+			}
+
+			kind := raw.Kind
+			if kind == "" {
+				kind = "message"
+			}
+
 			cm := chatMessage{
 				ID:          id,
 				SenderLogin: raw.SenderLogin,
 				SenderGuild: raw.SenderGuild,
 				Body:        raw.Body,
+				Kind:        kind,
+				Metadata:    meta,
 				CreatedAt:   raw.CreatedAt,
 				IsSelf:      (raw.SenderLogin == m.myLogin),
 			}
+
+			// Animate new rich messages
+			if kind != "message" && kind != "" {
+				cm.animFrame = 1
+				cm.animStart = time.Now()
+			}
+
 			m.messages = append(m.messages, cm)
 		}
 
@@ -194,7 +256,22 @@ func (m hallModel) Update(msg tea.Msg) (hallModel, tea.Cmd) {
 			}
 		}
 
-		return m, hallTickCmd()
+		// Fetch reaction counts for loaded messages.
+		cmds := []tea.Cmd{hallTickCmd()}
+		if m.client != nil && len(m.messages) > 0 {
+			cmds = append(cmds, m.loadReactions())
+		}
+		return m, tea.Batch(cmds...)
+
+	case hallReactionsMsg:
+		if msg.err == nil && msg.reactions != nil {
+			for i := range m.messages {
+				if rcs, ok := msg.reactions[m.messages[i].ID]; ok {
+					m.messages[i].Reactions = rcs
+				}
+			}
+		}
+		return m, nil
 
 	case hallPresenceMsg:
 		if msg.err == nil {
@@ -447,6 +524,11 @@ func (m hallModel) View() string {
 		b.WriteString(m.renderMessages(viewportHeight))
 	}
 
+	// --- Slash command hint popup ---
+	if strings.HasPrefix(m.input, "/") && m.inputFocused {
+		b.WriteString(m.renderSlashHints())
+	}
+
 	// --- Mention autocomplete popup ---
 	if m.mentionActive && len(m.mentionMatches) > 0 {
 		b.WriteString(m.renderMentionPopup())
@@ -476,6 +558,9 @@ func (m hallModel) renderMessages(viewportHeight int) string {
 	for _, msg := range m.messages {
 		rendered := m.renderMessage(msg)
 		allLines = append(allLines, strings.Split(rendered, "\n")...)
+		if len(msg.Reactions) > 0 {
+			allLines = append(allLines, renderReactionLine(msg.Reactions))
+		}
 	}
 
 	total := len(allLines)
@@ -523,14 +608,40 @@ func (m hallModel) renderMessage(msg chatMessage) string {
 		return " " + chatSysStyle.Render(centered)
 	}
 
-	// Time column: right-aligned in 8 chars.
+	// Rich message rendering by kind
+	switch msg.Kind {
+	case "build-start":
+		return m.renderRichMessage(msg, forgeStyle, "started a build", msg.metaTitle())
+	case "build-update":
+		return m.renderBuildUpdate(msg)
+	case "ship":
+		return m.renderRichMessage(msg, goldStyle, "shipped", msg.metaTitle())
+	case "seek":
+		return m.renderRichMessage(msg, goldStyle, "seeking", msg.Body)
+	case "forge-verdict":
+		return m.renderForgeVerdict(msg)
+	case "cast":
+		return m.renderCast(msg)
+	}
+
+	// Default: plain message
+	return m.renderPlainMessage(msg)
+}
+
+// metaTitle returns the "title" from Metadata, falling back to Body.
+func (msg chatMessage) metaTitle() string {
+	if t, ok := msg.Metadata["title"]; ok && t != "" {
+		return t
+	}
+	return msg.Body
+}
+
+// renderPlainMessage renders a normal chat message.
+func (m hallModel) renderPlainMessage(msg chatMessage) string {
 	timeStr := fmt.Sprintf("%8s", formatChatTime(msg.CreatedAt))
 	timePart := metaStyle.Render(timeStr)
-
-	// Separator.
 	sep := chatSepStyle.Render(" · ")
 
-	// Name differs for self vs others.
 	var namePart string
 	if msg.IsSelf {
 		namePart = chatSelfNameStyle.Render("you")
@@ -543,7 +654,6 @@ func (m hallModel) renderMessage(msg chatMessage) string {
 		}
 	}
 
-	// Body styling helper — applies mention highlighting then base color
 	renderBody := func(s string) string {
 		highlighted := renderBodyWithMentions(s, m.myLogin, msg.IsSelf)
 		if msg.IsSelf {
@@ -552,7 +662,6 @@ func (m hallModel) renderMessage(msg chatMessage) string {
 		return chatTextStyle.Render(highlighted)
 	}
 
-	// Wrap body text to available width
 	bodyWidth := m.width - 26
 	if bodyWidth < 20 {
 		bodyWidth = 20
@@ -560,18 +669,79 @@ func (m hallModel) renderMessage(msg chatMessage) string {
 	wrapped := lipgloss.NewStyle().Width(bodyWidth).Render(msg.Body)
 	lines := strings.Split(wrapped, "\n")
 
-	// First line: full prefix + body
 	result := " " + timePart + "  " + namePart + sep + renderBody(lines[0])
-
 	if len(lines) > 1 {
-		// Continuation lines aligned under body start
 		indent := strings.Repeat(" ", 15)
 		for _, line := range lines[1:] {
 			result += "\n" + indent + renderBody(line)
 		}
 	}
-
 	return result
+}
+
+// renderRichMessage renders a styled card for build-start, ship, seek.
+func (m hallModel) renderRichMessage(msg chatMessage, style lipgloss.Style, verb, title string) string {
+	bar := style.Render("│")
+	sender := style.Render(msg.SenderLogin)
+	titleStr := goldStyle.Render(`"` + truncStr(cleanTitle(title), 50) + `"`)
+
+	line := " " + bar + "  " + sender + " " + verb + " · " + titleStr
+	return line
+}
+
+// renderBuildUpdate renders a build update with a green dot.
+func (m hallModel) renderBuildUpdate(msg chatMessage) string {
+	dot := accentStyle.Render("·")
+	sender := accentStyle.Render(msg.SenderLogin)
+	return " " + dot + "  " + sender + " · " + dimStyle.Render(msg.Body)
+}
+
+// renderForgeVerdict renders a forge accept/reject card.
+func (m hallModel) renderForgeVerdict(msg chatMessage) string {
+	title := msg.metaTitle()
+	potency := msg.Metadata["potency"]
+	bar := accentStyle.Render("│")
+	sender := accentStyle.Render(msg.SenderLogin)
+	titleStr := goldStyle.Render(`"` + truncStr(cleanTitle(title), 50) + `"`)
+
+	line := " " + bar + "  " + sender + " forged · " + titleStr
+	if potency != "" {
+		line += " · " + potencyStyle(potencyFromStr(potency)).Render("P"+potency)
+	}
+	return line
+}
+
+// renderCast renders a grimoire cast message.
+func (m hallModel) renderCast(msg chatMessage) string {
+	bar := castStyle.Render("│")
+	label := grimLabelStyle.Render("Grimoire:")
+	bodyWidth := m.width - 16
+	if bodyWidth < 20 {
+		bodyWidth = 20
+	}
+	wrapped := lipgloss.NewStyle().Width(bodyWidth).Render(msg.Body)
+	lines := strings.Split(wrapped, "\n")
+
+	result := " " + bar + "  " + label + " " + grimVoiceStyle.Render(lines[0])
+	if len(lines) > 1 {
+		indent := strings.Repeat(" ", 6)
+		for _, line := range lines[1:] {
+			result += "\n" + indent + grimVoiceStyle.Render(line)
+		}
+	}
+	return result
+}
+
+// potencyFromStr converts a string potency to int, defaulting to 1.
+func potencyFromStr(s string) int {
+	switch s {
+	case "3":
+		return 3
+	case "2":
+		return 2
+	default:
+		return 1
+	}
 }
 
 // renderInput renders the text input line at the bottom.
@@ -599,6 +769,32 @@ func (m hallModel) renderInput() string {
 	return " " + prompt + chatSelfTextStyle.Render(text) + cursor
 }
 
+// slashCommands defines the available slash commands and their descriptions.
+var slashCommands = []struct {
+	cmd  string
+	desc string
+}{
+	{"/build <title>", "start a build"},
+	{"/b <update>", "update a build"},
+	{"/ship <title>", "ship something"},
+	{"/seek <question>", "ask for help"},
+}
+
+// renderSlashHints renders slash command hints above the input when typing "/".
+func (m hallModel) renderSlashHints() string {
+	prefix := strings.TrimPrefix(m.input, "/")
+	var b strings.Builder
+	for _, sc := range slashCommands {
+		// Filter by prefix
+		trimmedCmd := strings.TrimPrefix(sc.cmd, "/")
+		if prefix != "" && !strings.HasPrefix(trimmedCmd, prefix) {
+			continue
+		}
+		b.WriteString("   " + accentStyle.Render(sc.cmd) + "  " + dimStyle.Render(sc.desc) + "\n")
+	}
+	return b.String()
+}
+
 // renderMentionPopup renders the autocomplete suggestion list above the input line.
 func (m hallModel) renderMentionPopup() string {
 	var b strings.Builder
@@ -616,6 +812,15 @@ func (m hallModel) renderMentionPopup() string {
 		b.WriteByte('\n')
 	}
 	return b.String()
+}
+
+// renderReactionLine renders a dim line of emoji counts indented to body start.
+func renderReactionLine(reactions []reactionCount) string {
+	var parts []string
+	for _, r := range reactions {
+		parts = append(parts, fmt.Sprintf("%s%d", r.Emoji, r.Count))
+	}
+	return "               " + dimStyle.Render(strings.Join(parts, " "))
 }
 
 // padLines writes blank lines to fill dead space above sparse message lists.

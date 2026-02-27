@@ -55,7 +55,7 @@ func TestGetMe_Unauthorized(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for unauthorized request")
 	}
-	if got := err.Error(); !strings.Contains(got,"HTTP 401") {
+	if got := err.Error(); !strings.Contains(got, "HTTP 401") {
 		t.Errorf("error = %q, want it to contain 'HTTP 401'", got)
 	}
 }
@@ -147,14 +147,14 @@ func TestHTTPError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 500 response")
 	}
-	if got := err.Error(); !strings.Contains(got,"boom") {
+	if got := err.Error(); !strings.Contains(got, "boom") {
 		t.Errorf("error = %q, want it to contain 'boom'", got)
 	}
 }
 
 func TestDoRequest_CancelledContext(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		time.Sleep(5 * time.Second) // slow server
+		time.Sleep(5 * time.Second)                  // slow server
 		json.NewEncoder(w).Encode(domain.Magician{}) //nolint:errcheck
 	}))
 	defer srv.Close()
@@ -165,7 +165,6 @@ func TestDoRequest_CancelledContext(t *testing.T) {
 
 	_, err := c.GetMe(ctx)
 	if err == nil {
-		t.Fatal("expected error for cancelled context")
+		t.Fatal("expected error for canceled context")
 	}
 }
-

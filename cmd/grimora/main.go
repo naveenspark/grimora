@@ -144,7 +144,7 @@ func runLogin(apiURL string) error {
 		}
 		defer exchangeResp.Body.Close() //nolint:errcheck
 		if exchangeResp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(exchangeResp.Body)
+			body, _ := io.ReadAll(exchangeResp.Body) //nolint:errcheck // best-effort read for error message
 			http.Error(w, "exchange failed", http.StatusInternalServerError)
 			errCh <- fmt.Errorf("cli code exchange: HTTP %d: %s", exchangeResp.StatusCode, string(body))
 			return
@@ -172,7 +172,7 @@ func runLogin(apiURL string) error {
 	// Build login URL: use base URL (grimora.ai), not API URL (api.grimora.ai).
 	baseURL := os.Getenv("GRIMORA_BASE_URL")
 	if baseURL == "" {
-		u, _ := url.Parse(apiURL)
+		u, _ := url.Parse(apiURL) //nolint:errcheck // apiURL is already validated or defaulted
 		host := u.Hostname()
 		if strings.HasPrefix(host, "api.") {
 			u.Host = strings.TrimPrefix(host, "api.")
@@ -264,7 +264,7 @@ func isNewerVersion(latest, current string) bool {
 		v = strings.TrimPrefix(v, "v")
 		parts := strings.SplitN(v, ".", 3)
 		atoi := func(s string) int {
-			n, _ := strconv.Atoi(s)
+			n, _ := strconv.Atoi(s) //nolint:errcheck // zero-value on parse failure is desired
 			return n
 		}
 		var maj, min, patch int
@@ -423,7 +423,7 @@ func downloadFile(client *http.Client, url, dest string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close() //nolint:errcheck
+	defer f.Close()                   //nolint:errcheck
 	const maxDownloadSize = 100 << 20 // 100 MB
 	_, err = io.Copy(f, io.LimitReader(resp.Body, maxDownloadSize))
 	return err

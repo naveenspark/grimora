@@ -18,19 +18,6 @@ func newTestYouModel() youModel {
 	return m
 }
 
-func makeTestCard(login, guildID string, spellCount int) domain.MagicianCard {
-	return domain.MagicianCard{
-		Magician: domain.Magician{
-			ID:          uuid.New(),
-			GitHubLogin: login,
-			GuildID:     guildID,
-		},
-		SpellCount:   spellCount,
-		TotalPotency: 2,
-		Move:         1,
-	}
-}
-
 func makeTestProject(name, insight string) domain.WorkshopProject {
 	return domain.WorkshopProject{
 		ID:        uuid.New(),
@@ -116,8 +103,11 @@ func TestYouWorkshopEditModeEscCancels(t *testing.T) {
 	if m.wsState != wsNormal {
 		t.Errorf("expected wsState=wsNormal after Esc, got %d", m.wsState)
 	}
-	if m.wsEditText != "" {
-		t.Errorf("expected wsEditText cleared after Esc, got %q", m.wsEditText)
+	if m.wsAddName != "" {
+		t.Errorf("expected wsAddName cleared after Esc, got %q", m.wsAddName)
+	}
+	if m.wsAddInsight != "" {
+		t.Errorf("expected wsAddInsight cleared after Esc, got %q", m.wsAddInsight)
 	}
 }
 
@@ -211,86 +201,14 @@ func TestYouDeleteLastItemAdjustsCursor(t *testing.T) {
 	}
 }
 
-func TestYouLeaderboardShowsMovementAndPotency(t *testing.T) {
-	m := newTestYouModel()
-	cards := []domain.MagicianCard{
-		{
-			Magician:     domain.Magician{ID: uuid.New(), GitHubLogin: "topwizard", GuildID: "cipher"},
-			SpellCount:   20,
-			TotalPotency: 3,
-			Move:         2,
-		},
-	}
-	m, _ = m.Update(youLoadedMsg{cards: cards})
-
-	view := m.View()
-	if !strings.Contains(view, "topwizard") {
-		t.Errorf("expected 'topwizard' in leaderboard, got:\n%s", view)
-	}
-	// Movement up should show ↑2
-	if !strings.Contains(view, "↑2") {
-		t.Errorf("expected '↑2' movement in leaderboard, got:\n%s", view)
-	}
-	// Potency P3 should appear
-	if !strings.Contains(view, "P3") {
-		t.Errorf("expected 'P3' in leaderboard, got:\n%s", view)
-	}
-}
-
-func TestYouCurrentUserHighlighted(t *testing.T) {
-	m := newTestYouModel()
-	me := &domain.Magician{
-		ID:          uuid.New(),
-		GitHubLogin: "itsme",
-		GuildID:     "nyx",
-	}
-	m, _ = m.Update(meLoadedMsg{me: me})
-
-	cards := []domain.MagicianCard{
-		makeTestCard("itsme", "nyx", 5),
-		makeTestCard("someone", "fathom", 3),
-	}
-	m, _ = m.Update(youLoadedMsg{cards: cards})
-
-	view := m.View()
-	if !strings.Contains(view, "<- you") {
-		t.Errorf("expected '<- you' marker for current user in leaderboard, got:\n%s", view)
-	}
-}
-
-func TestYouBrowseToggle(t *testing.T) {
-	m := newTestYouModel()
-	// Default is unified view (not browsing)
-	if m.browsing {
-		t.Errorf("expected browsing=false initially")
-	}
-
-	// Toggle to browse
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
-	if !m.browsing {
-		t.Errorf("expected browsing=true after 'b'")
-	}
-
-	// Toggle back
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
-	if m.browsing {
-		t.Errorf("expected browsing=false after second 'b'")
-	}
-}
-
-func TestYouUnifiedViewShowsAllSections(t *testing.T) {
+func TestYouViewShowsWorkshopSection(t *testing.T) {
 	m := newTestYouModel()
 	projects := []domain.WorkshopProject{makeTestProject("MyProject", "testing")}
-	cards := []domain.MagicianCard{makeTestCard("wizard1", "cipher", 5)}
 	m, _ = m.Update(workshopLoadedMsg{projects: projects})
-	m, _ = m.Update(youLoadedMsg{cards: cards})
 
 	view := m.View()
 	if !strings.Contains(view, "WORKSHOP") {
-		t.Errorf("expected 'WORKSHOP' in unified view, got:\n%s", view)
-	}
-	if !strings.Contains(view, "LEADERBOARD") {
-		t.Errorf("expected 'LEADERBOARD' in unified view, got:\n%s", view)
+		t.Errorf("expected 'WORKSHOP' in view, got:\n%s", view)
 	}
 }
 
@@ -359,6 +277,45 @@ func TestYouWorkshopDeletedUpdatesProjectList(t *testing.T) {
 	}
 	if m.projects[0].Name != "Project B" {
 		t.Errorf("expected remaining project 'Project B', got %q", m.projects[0].Name)
+	}
+}
+
+func TestYouProjectStatusBadge(t *testing.T) {
+	m := newTestYouModel()
+	proj := makeTestProject("My Project", "working on it")
+	m, _ = m.Update(workshopLoadedMsg{projects: []domain.WorkshopProject{proj}})
+
+	// Simulate receiving updates with no ship
+	m, _ = m.Update(projectUpdatesMsg{
+		projectID: proj.ID.String(),
+		updates: []domain.ProjectUpdate{
+			{Kind: "update", Body: "progress"},
+		},
+	})
+
+	view := m.View()
+	if !strings.Contains(view, "[building]") {
+		t.Errorf("expected '[building]' badge in view, got:\n%s", view)
+	}
+}
+
+func TestYouProjectStatusShipped(t *testing.T) {
+	m := newTestYouModel()
+	proj := makeTestProject("Shipped Thing", "done")
+	m, _ = m.Update(workshopLoadedMsg{projects: []domain.WorkshopProject{proj}})
+
+	// Simulate receiving updates with a ship
+	m, _ = m.Update(projectUpdatesMsg{
+		projectID: proj.ID.String(),
+		updates: []domain.ProjectUpdate{
+			{Kind: "update", Body: "progress"},
+			{Kind: "ship", Body: "v1.0"},
+		},
+	})
+
+	view := m.View()
+	if !strings.Contains(view, "[shipped]") {
+		t.Errorf("expected '[shipped]' badge in view, got:\n%s", view)
 	}
 }
 

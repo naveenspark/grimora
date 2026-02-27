@@ -22,10 +22,11 @@ func TestAppTabSwitching(t *testing.T) {
 		key      string
 		wantView view
 	}{
-		{"1", viewHome},
-		{"2", viewHall},
-		{"3", viewGrimoire},
-		{"4", viewYou},
+		{"1", viewHall},
+		{"2", viewGrimoire},
+		{"3", viewThreads},
+		{"4", viewBoard},
+		{"5", viewYou},
 	}
 
 	for _, tc := range tests {
@@ -59,15 +60,14 @@ func TestAppPeekOverlayOpenAndClose(t *testing.T) {
 
 func TestAppGlobalQuitOnQ(t *testing.T) {
 	a := newTestApp()
-	// Default view is home, not editing — q should quit
+	// Default view is Hall, not editing — q should quit
 	_, cmd := a.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
 	if cmd == nil {
 		t.Fatal("expected quit command on 'q', got nil")
 	}
-	// tea.Quit returns a specific command; we verify it's non-nil
 }
 
-func TestAppEscFromCreateReturnsToHome(t *testing.T) {
+func TestAppEscFromCreateReturnsToHall(t *testing.T) {
 	a := newTestApp()
 
 	// Switch to create view
@@ -77,11 +77,11 @@ func TestAppEscFromCreateReturnsToHome(t *testing.T) {
 		t.Fatalf("expected viewCreate after 'n', got %d", a.view)
 	}
 
-	// Press Esc to go back home
+	// Press Esc to go back to Hall
 	model, _ = a.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	a = model.(App)
-	if a.view != viewHome {
-		t.Errorf("expected viewHome after Esc from create, got %d", a.view)
+	if a.view != viewHall {
+		t.Errorf("expected viewHall after Esc from create, got %d", a.view)
 	}
 }
 
@@ -89,7 +89,7 @@ func TestAppIsEditingGrimoireSearch(t *testing.T) {
 	a := newTestApp()
 
 	// Switch to grimoire tab
-	model, _ := a.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("3")})
+	model, _ := a.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("2")})
 	a = model.(App)
 	a.grimoire.loading = false
 	a.grimoire.spells = nil
@@ -152,20 +152,38 @@ func TestAppIsEditingYouWorkshop(t *testing.T) {
 	}
 }
 
+func TestAppIsEditingThreadsInput(t *testing.T) {
+	a := newTestApp()
+	a.view = viewThreads
+
+	a.threads.inputFocused = false
+	if a.isEditing() {
+		t.Error("expected isEditing=false when threads.inputFocused=false")
+	}
+
+	a.threads.inputFocused = true
+	if !a.isEditing() {
+		t.Error("expected isEditing=true when threads.inputFocused=true")
+	}
+}
+
 func TestAppViewRendersTabBar(t *testing.T) {
 	a := newTestApp()
 	model, _ := a.Update(tea.WindowSizeMsg{Width: 80, Height: 30})
 	a = model.(App)
 
 	view := a.View()
-	if !strings.Contains(view, "Home") {
-		t.Errorf("expected 'Home' tab in app view, got:\n%s", view)
-	}
 	if !strings.Contains(view, "Hall") {
 		t.Errorf("expected 'Hall' tab in app view, got:\n%s", view)
 	}
 	if !strings.Contains(view, "Grimoire") {
 		t.Errorf("expected 'Grimoire' tab in app view, got:\n%s", view)
+	}
+	if !strings.Contains(view, "Threads") {
+		t.Errorf("expected 'Threads' tab in app view, got:\n%s", view)
+	}
+	if !strings.Contains(view, "Board") {
+		t.Errorf("expected 'Board' tab in app view, got:\n%s", view)
 	}
 	if !strings.Contains(view, "You") {
 		t.Errorf("expected 'You' tab in app view, got:\n%s", view)

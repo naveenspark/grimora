@@ -16,9 +16,10 @@ import (
 type view int
 
 const (
-	viewHome view = iota
-	viewHall
+	viewHall view = iota
 	viewGrimoire
+	viewThreads
+	viewBoard
 	viewYou
 	viewCreate
 )
@@ -39,9 +40,10 @@ type showPeekMsg struct {
 type App struct {
 	client     *client.Client
 	view       view
-	home       homeModel
 	hall       hallModel
 	grimoire   grimoireModel
+	threads    threadsModel
+	board      boardModel
 	you        youModel
 	create     createModel
 	peek       peekModel
@@ -59,9 +61,10 @@ type App struct {
 func NewApp(c *client.Client) App {
 	return App{
 		client:   c,
-		home:     newHomeModel(c),
 		hall:     newHallModel(c),
 		grimoire: newGrimoireModel(c),
+		threads:  newThreadsModel(c),
+		board:    newBoardModel(c),
 		you:      newYouModel(c),
 		create:   newCreateModel(c),
 		peek:     newPeekModel(c),
@@ -69,7 +72,7 @@ func NewApp(c *client.Client) App {
 }
 
 func (a App) Init() tea.Cmd {
-	return tea.Batch(a.home.Init(), shimmerTickCmd(), a.loadMe())
+	return tea.Batch(a.hall.Init(), shimmerTickCmd(), a.loadMe())
 }
 
 func (a App) loadMe() tea.Cmd {
@@ -95,9 +98,10 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Chrome: header(2) + tabs(1) + input(1) + help(1) = 5 lines
 		bodyHeight := msg.Height - 5
 		bodyMsg := tea.WindowSizeMsg{Width: msg.Width, Height: bodyHeight}
-		a.home, _ = a.home.Update(bodyMsg)
 		a.hall, _ = a.hall.Update(bodyMsg)
 		a.grimoire, _ = a.grimoire.Update(bodyMsg)
+		a.threads, _ = a.threads.Update(bodyMsg)
+		a.board, _ = a.board.Update(bodyMsg)
 		a.you, _ = a.you.Update(bodyMsg)
 		a.peek, _ = a.peek.Update(bodyMsg)
 		a.create, _ = a.create.Update(bodyMsg)
@@ -114,6 +118,8 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Propagate to sub-models that need user identity
 		a.you, _ = a.you.Update(msg)
 		a.hall, _ = a.hall.Update(msg)
+		a.threads, _ = a.threads.Update(msg)
+		a.board, _ = a.board.Update(msg)
 		return a, nil
 
 	case showPeekMsg:
@@ -166,24 +172,30 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "q", "ctrl+c":
 				return a, tea.Quit
 			case "1":
-				if a.view != viewHome {
-					a.view = viewHome
-					return a, a.home.Init()
-				}
-				return a, nil
-			case "2":
 				if a.view != viewHall {
 					a.view = viewHall
 					return a, a.hall.Init()
 				}
 				return a, nil
-			case "3":
+			case "2":
 				if a.view != viewGrimoire {
 					a.view = viewGrimoire
 					return a, a.grimoire.Init()
 				}
 				return a, nil
+			case "3":
+				if a.view != viewThreads {
+					a.view = viewThreads
+					return a, a.threads.Init()
+				}
+				return a, nil
 			case "4":
+				if a.view != viewBoard {
+					a.view = viewBoard
+					return a, a.board.Init()
+				}
+				return a, nil
+			case "5":
 				if a.view != viewYou {
 					a.view = viewYou
 					return a, a.you.Init()
@@ -196,13 +208,13 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			case "esc":
 				if a.view == viewCreate {
-					a.view = viewHome
-					return a, a.home.Init()
+					a.view = viewHall
+					return a, a.hall.Init()
 				}
 			}
 		} else if msg.String() == "esc" && a.view == viewCreate {
-			a.view = viewHome
-			return a, a.home.Init()
+			a.view = viewHall
+			return a, a.hall.Init()
 		}
 	}
 
@@ -218,12 +230,14 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	var cmd tea.Cmd
 	switch a.view {
-	case viewHome:
-		a.home, cmd = a.home.Update(msg)
 	case viewHall:
 		a.hall, cmd = a.hall.Update(msg)
 	case viewGrimoire:
 		a.grimoire, cmd = a.grimoire.Update(msg)
+	case viewThreads:
+		a.threads, cmd = a.threads.Update(msg)
+	case viewBoard:
+		a.board, cmd = a.board.Update(msg)
 	case viewYou:
 		a.you, cmd = a.you.Update(msg)
 	case viewCreate:
@@ -241,6 +255,8 @@ func (a App) isEditing() bool {
 		return true
 	case viewHall:
 		return a.hall.inputFocused
+	case viewThreads:
+		return a.threads.inputFocused
 	case viewYou:
 		return a.you.wsState != wsNormal
 	}
@@ -289,20 +305,21 @@ func (a App) View() string {
 		header += "\n"
 	}
 
-	// Tab bar: 1 Home  2 Hall  3 Grimoire  4 You
+	// Tab bar: 1 Hall  2 Grimoire  3 Threads  4 Board  5 You
 	type tabEntry struct {
 		key  string
 		name string
 		v    view
 	}
 	tabs := []tabEntry{
-		{"1", "Home", viewHome},
-		{"2", "Hall", viewHall},
-		{"3", "Grimoire", viewGrimoire},
-		{"4", "You", viewYou},
+		{"1", "Hall", viewHall},
+		{"2", "Grimoire", viewGrimoire},
+		{"3", "Threads", viewThreads},
+		{"4", "Board", viewBoard},
+		{"5", "You", viewYou},
 	}
 
-	// Tab bar: 4 equal-width columns spread across terminal (matches mockup flex:1)
+	// Tab bar: equal-width columns spread across terminal
 	colWidth := a.width / len(tabs)
 	var tabBar strings.Builder
 	for _, t := range tabs {
@@ -333,27 +350,31 @@ func (a App) View() string {
 	// Body
 	var body string
 	var help string
+	tabsHelp := "1-5"
 	switch a.view {
-	case viewHome:
-		body = a.home.View()
-		help = " " + helpEntry("1-4", "tabs") + "  " + helpEntry("/", "search") + "  " + helpEntry("n", "forge") + "  " + helpEntry("enter", "ask") + "  " + helpEntry("h", "help") + "  " + helpEntry("q", "quit")
 	case viewHall:
 		body = a.hall.View()
 		if a.hall.inputFocused {
-			help = " " + helpEntry("1-4", "tabs") + "  " + helpEntry("enter", "send") + "  " + helpEntry("esc", "nav")
+			help = " " + helpEntry(tabsHelp, "tabs") + "  " + helpEntry("enter", "send") + "  " + helpEntry("esc", "nav")
 		} else {
-			help = " " + helpEntry("1-4", "tabs") + "  " + helpEntry("j/k", "scroll") + "  " + helpEntry("enter", "type") + "  " + helpEntry("h", "help") + "  " + helpEntry("q", "quit")
+			help = " " + helpEntry(tabsHelp, "tabs") + "  " + helpEntry("j/k", "scroll") + "  " + helpEntry("enter", "type") + "  " + helpEntry("h", "help") + "  " + helpEntry("q", "quit")
 		}
 	case viewGrimoire:
 		body = a.grimoire.View()
 		if a.grimoire.detail {
-			help = " " + helpEntry("1-4", "tabs") + "  " + helpEntry("u", "upvote") + "  " + helpEntry("c", "copy") + "  " + helpEntry("s", "save") + "  " + helpEntry("p", "peek") + "  " + helpEntry("esc", "back")
+			help = " " + helpEntry(tabsHelp, "tabs") + "  " + helpEntry("u", "upvote") + "  " + helpEntry("c", "copy") + "  " + helpEntry("s", "save") + "  " + helpEntry("p", "peek") + "  " + helpEntry("esc", "back")
 		} else {
-			help = " " + helpEntry("1-4", "tabs") + "  " + helpEntry("j/k", "nav") + "  " + helpEntry("/", "search") + "  " + helpEntry("w", "toggle") + "  " + helpEntry("t", "tag") + "  " + helpEntry("s", "sort") + "  " + helpEntry("n", "forge") + "  " + helpEntry("h", "help") + "  " + helpEntry("q", "quit")
+			help = " " + helpEntry(tabsHelp, "tabs") + "  " + helpEntry("j/k", "nav") + "  " + helpEntry("/", "search") + "  " + helpEntry("w", "toggle") + "  " + helpEntry("t", "tag") + "  " + helpEntry("s", "sort") + "  " + helpEntry("n", "forge") + "  " + helpEntry("h", "help") + "  " + helpEntry("q", "quit")
 		}
+	case viewThreads:
+		body = a.threads.View()
+		help = " " + helpEntry(tabsHelp, "tabs") + "  " + a.threads.helpKeys()
+	case viewBoard:
+		body = a.board.View()
+		help = " " + helpEntry(tabsHelp, "tabs") + "  " + a.board.helpKeys()
 	case viewYou:
 		body = a.you.View()
-		help = " " + helpEntry("1-4", "tabs") + "  " + a.you.helpKeys()
+		help = " " + helpEntry(tabsHelp, "tabs") + "  " + a.you.helpKeys()
 	case viewCreate:
 		body = a.create.View()
 		help = " " + helpEntry("tab", "next") + "  " + helpEntry("h/l", "tag") + "  " + helpEntry("ctrl+s", "submit") + "  " + helpEntry("esc", "cancel")
@@ -371,14 +392,8 @@ func (a App) View() string {
 		help = " " + helpEntry("j/k", "nav") + "  " + helpEntry("enter", "open") + "  " + helpEntry("esc", "close")
 	}
 
-	// Input bar: persistent on Home (placeholder), Hall has its own inside body
-	var inputBar string
-	switch a.view {
-	case viewHome:
-		inputBar = " " + inputPromptStyle.Render("> ") + inputPlaceholderStyle.Render("ask the grimoire...")
-	default:
-		inputBar = ""
-	}
+	// No persistent input bar (Home tab removed)
+	inputBar := ""
 	if a.peekOpen {
 		inputBar = ""
 	}

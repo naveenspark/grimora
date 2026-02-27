@@ -124,21 +124,21 @@ func TestHallConnectedState(t *testing.T) {
 
 func TestHallInputFocusToggle(t *testing.T) {
 	m := newTestHallModel()
-	// Default: inputFocused=true
+	// Default: inputFocused=false (nav mode, so tab keys work)
+	if m.inputFocused {
+		t.Fatal("expected inputFocused=false by default")
+	}
+
+	// Press Enter to focus
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if !m.inputFocused {
-		t.Fatal("expected inputFocused=true by default")
+		t.Error("expected inputFocused=true after Enter, got false")
 	}
 
 	// Press Esc to unfocus
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	if m.inputFocused {
 		t.Error("expected inputFocused=false after Esc, got true")
-	}
-
-	// Press Enter to refocus
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	if !m.inputFocused {
-		t.Error("expected inputFocused=true after Enter, got false")
 	}
 }
 
@@ -260,6 +260,33 @@ func TestHallTickTriggersReload(t *testing.T) {
 	_, cmd := m.Update(hallTickMsg(time.Now()))
 	if cmd == nil {
 		t.Error("expected hallTickMsg to return a reload command, got nil")
+	}
+}
+
+func TestHallReactionDisplay(t *testing.T) {
+	m := newTestHallModel()
+	m.myLogin = "user"
+
+	m.messages = []chatMessage{
+		{
+			ID:          "msg-1",
+			SenderLogin: "alice",
+			Body:        "Hello!",
+			CreatedAt:   time.Now(),
+			Reactions: []reactionCount{
+				{Emoji: "🔥", Count: 3},
+				{Emoji: "✨", Count: 1},
+			},
+		},
+	}
+	m.connected = true
+
+	view := m.View()
+	if !strings.Contains(view, "🔥") {
+		t.Errorf("expected fire emoji in view, got:\n%s", view)
+	}
+	if !strings.Contains(view, "3") {
+		t.Errorf("expected count '3' in view, got:\n%s", view)
 	}
 }
 

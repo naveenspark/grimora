@@ -7,13 +7,10 @@ import (
 
 	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 
 	"github.com/naveenspark/grimora/pkg/client"
 	"github.com/naveenspark/grimora/pkg/domain"
 )
-
-// browsing is true when the full browse panel is shown instead of the unified view.
 
 // workshopState is the state machine for workshop CRUD interactions.
 type workshopState int
@@ -27,19 +24,9 @@ const (
 
 // -- messages --
 
-type youLoadedMsg struct {
-	cards []domain.MagicianCard
-	err   error
-}
-
 type youInvitesLoadedMsg struct {
 	invites []domain.Invite
 	err     error
-}
-
-type youFollowMsg struct {
-	login string
-	err   error
 }
 
 type youCopyMsg struct{ err error }
@@ -61,6 +48,12 @@ type workshopDeletedMsg struct {
 	err error
 }
 
+type projectUpdatesMsg struct {
+	projectID string
+	updates   []domain.ProjectUpdate
+	err       error
+}
+
 // -- model --
 
 // youSection identifies which section the cursor is in.
@@ -69,7 +62,6 @@ type youSection int
 const (
 	youSectionWorkshop youSection = iota
 	youSectionInvites
-	youSectionLeaderboard
 )
 
 // inviteSpellThreshold is the number of forged spells required for the next invite code.
@@ -77,45 +69,32 @@ const inviteSpellThreshold = 10
 
 type youModel struct {
 	client    *client.Client
-	cards     []domain.MagicianCard
 	invites   []domain.Invite
 	me        *domain.Magician
-	cursor    int // leaderboard cursor
-	browsing  bool
-	loading   bool
-	err       string
 	statusMsg string
 	width     int
 	height    int
 	section   youSection // active section for navigation
 
 	// workshop
-	projects     []domain.WorkshopProject
-	wsCursor     int
-	wsState      workshopState
-	wsEditText   string // insight being edited
-	wsAddName    string // name field when adding
-	wsAddInsight string // insight field when adding
-	wsAddFocus   int    // 0=name, 1=insight when adding
+	projects       []domain.WorkshopProject
+	projectUpdates map[string][]domain.ProjectUpdate
+	wsCursor       int
+	wsState        workshopState
+	wsAddName      string // name field when adding/editing
+	wsAddInsight   string // insight field when adding/editing
+	wsAddFocus     int    // 0=name, 1=insight
 
 	// invites
 	inviteCursor int
 }
 
 func newYouModel(c *client.Client) youModel {
-	return youModel{client: c}
+	return youModel{client: c, projectUpdates: make(map[string][]domain.ProjectUpdate)}
 }
 
 func (m youModel) Init() tea.Cmd {
-	return tea.Batch(m.loadMagicians(), m.loadInvites(), m.loadWorkshop())
-}
-
-func (m youModel) loadMagicians() tea.Cmd {
-	c := m.client
-	return func() tea.Msg {
-		cards, err := c.ListMagicians(context.Background(), pageSize, 0)
-		return youLoadedMsg{cards: cards, err: err}
-	}
+	return tea.Batch(m.loadInvites(), m.loadWorkshop())
 }
 
 func (m youModel) loadInvites() tea.Cmd {
@@ -134,21 +113,16 @@ func (m youModel) loadWorkshop() tea.Cmd {
 	}
 }
 
+func (m youModel) loadProjectUpdates(projectID string) tea.Cmd {
+	c := m.client
+	return func() tea.Msg {
+		updates, err := c.ListProjectUpdates(context.Background(), projectID)
+		return projectUpdatesMsg{projectID: projectID, updates: updates, err: err}
+	}
+}
+
 func (m youModel) Update(msg tea.Msg) (youModel, tea.Cmd) {
 	switch msg := msg.(type) {
-	case youLoadedMsg:
-		m.loading = false
-		if msg.err != nil {
-			m.err = msg.err.Error()
-		} else {
-			m.cards = msg.cards
-			m.err = ""
-			if m.cursor >= len(m.cards) {
-				m.cursor = 0
-			}
-		}
-		return m, nil
-
 	case youInvitesLoadedMsg:
 		if msg.err == nil {
 			m.invites = msg.invites
@@ -167,6 +141,22 @@ func (m youModel) Update(msg tea.Msg) (youModel, tea.Cmd) {
 			if m.wsCursor >= len(m.projects) {
 				m.wsCursor = 0
 			}
+		}
+		// Load project updates for status badges
+		var cmds []tea.Cmd
+		if m.client != nil {
+			for _, p := range m.projects {
+				cmds = append(cmds, m.loadProjectUpdates(p.ID.String()))
+			}
+		}
+		if len(cmds) > 0 {
+			return m, tea.Batch(cmds...)
+		}
+		return m, nil
+
+	case projectUpdatesMsg:
+		if msg.err == nil {
+			m.projectUpdates[msg.projectID] = msg.updates
 		}
 		return m, nil
 
@@ -193,7 +183,9 @@ func (m youModel) Update(msg tea.Msg) (youModel, tea.Cmd) {
 			m.statusMsg = "saved"
 		}
 		m.wsState = wsNormal
-		m.wsEditText = ""
+		m.wsAddName = ""
+		m.wsAddInsight = ""
+		m.wsAddFocus = 0
 		return m, nil
 
 	case workshopDeletedMsg:
@@ -213,24 +205,6 @@ func (m youModel) Update(msg tea.Msg) (youModel, tea.Cmd) {
 			m.statusMsg = "project removed"
 		}
 		m.wsState = wsNormal
-		return m, nil
-
-	case youFollowMsg:
-		if msg.err != nil {
-			if strings.Contains(msg.err.Error(), "not authenticated") {
-				m.statusMsg = "not authenticated -- run: grimora login"
-			} else {
-				m.statusMsg = fmt.Sprintf("follow failed: %v", msg.err)
-			}
-		} else {
-			for i := range m.cards {
-				if m.cards[i].GitHubLogin == msg.login {
-					m.cards[i].IsFollowing = !m.cards[i].IsFollowing
-					break
-				}
-			}
-			m.statusMsg = ""
-		}
 		return m, nil
 
 	case youCopyMsg:
@@ -267,31 +241,18 @@ func (m youModel) handleKey(msg tea.KeyMsg) (youModel, tea.Cmd) {
 	// Normal mode
 	switch msg.String() {
 	case "j", "down":
-		if m.browsing {
-			if m.wsCursor < len(m.projects)-1 {
-				m.wsCursor++
-			}
-		} else {
-			m.navDown()
-		}
+		m.navDown()
 
 	case "k", "up":
-		if m.browsing {
-			if m.wsCursor > 0 {
-				m.wsCursor--
-			}
-		} else {
-			m.navUp()
-		}
-
-	case "b":
-		m.browsing = !m.browsing
+		m.navUp()
 
 	case "e":
-		// Edit insight of selected workshop project
-		if len(m.projects) > 0 && m.wsCursor < len(m.projects) {
+		// Edit selected workshop project (name + insight)
+		if m.section == youSectionWorkshop && len(m.projects) > 0 && m.wsCursor < len(m.projects) {
 			m.wsState = wsEditing
-			m.wsEditText = m.projects[m.wsCursor].Insight
+			m.wsAddName = m.projects[m.wsCursor].Name
+			m.wsAddInsight = m.projects[m.wsCursor].Insight
+			m.wsAddFocus = 0
 		}
 
 	case "a":
@@ -303,26 +264,8 @@ func (m youModel) handleKey(msg tea.KeyMsg) (youModel, tea.Cmd) {
 
 	case "d":
 		// Delete selected workshop project
-		if len(m.projects) > 0 && m.wsCursor < len(m.projects) {
+		if m.section == youSectionWorkshop && len(m.projects) > 0 && m.wsCursor < len(m.projects) {
 			m.wsState = wsDeleting
-		}
-
-	case "f":
-		// Follow/unfollow — uses cursor for leaderboard card index
-		if len(m.cards) > 0 && m.cursor < len(m.cards) {
-			card := m.cards[m.cursor]
-			login := card.GitHubLogin
-			isFollowing := card.IsFollowing
-			c := m.client
-			return m, func() tea.Msg {
-				var err error
-				if isFollowing {
-					err = c.Unfollow(context.Background(), login)
-				} else {
-					err = c.Follow(context.Background(), login)
-				}
-				return youFollowMsg{login: login, err: err}
-			}
 		}
 
 	case "c":
@@ -341,28 +284,25 @@ func (m youModel) handleKey(msg tea.KeyMsg) (youModel, tea.Cmd) {
 		}
 
 	case "r":
-		m.loading = true
-		return m, tea.Batch(m.loadMagicians(), m.loadInvites(), m.loadWorkshop())
-
-	case "p":
-		if len(m.cards) > 0 && m.cursor < len(m.cards) {
-			login := m.cards[m.cursor].GitHubLogin
-			return m, func() tea.Msg { return showPeekMsg{login: login} }
-		}
+		return m, tea.Batch(m.loadInvites(), m.loadWorkshop())
 	}
 	return m, nil
 }
 
 func (m youModel) handleKeyEditing(msg tea.KeyMsg) (youModel, tea.Cmd) {
 	switch msg.String() {
+	case "tab":
+		m.wsAddFocus = 1 - m.wsAddFocus
 	case "enter":
-		// Save
+		name := strings.TrimSpace(m.wsAddName)
+		if name == "" {
+			m.statusMsg = "name required"
+			return m, nil
+		}
 		if len(m.projects) > 0 && m.wsCursor < len(m.projects) {
-			proj := m.projects[m.wsCursor]
-			id := proj.ID.String()
-			name := proj.Name
-			insight := m.wsEditText
-			// Optimistic update
+			id := m.projects[m.wsCursor].ID.String()
+			insight := strings.TrimSpace(m.wsAddInsight)
+			m.projects[m.wsCursor].Name = name
 			m.projects[m.wsCursor].Insight = insight
 			c := m.client
 			return m, func() tea.Msg {
@@ -373,9 +313,15 @@ func (m youModel) handleKeyEditing(msg tea.KeyMsg) (youModel, tea.Cmd) {
 		m.wsState = wsNormal
 	case "esc":
 		m.wsState = wsNormal
-		m.wsEditText = ""
+		m.wsAddName = ""
+		m.wsAddInsight = ""
+		m.wsAddFocus = 0
 	default:
-		m.wsEditText = editRune(m.wsEditText, msg.String())
+		if m.wsAddFocus == 0 {
+			m.wsAddName = editRune(m.wsAddName, msg.String())
+		} else {
+			m.wsAddInsight = editRune(m.wsAddInsight, msg.String())
+		}
 	}
 	return m, nil
 }
@@ -383,7 +329,7 @@ func (m youModel) handleKeyEditing(msg tea.KeyMsg) (youModel, tea.Cmd) {
 func (m youModel) handleKeyAdding(msg tea.KeyMsg) (youModel, tea.Cmd) {
 	switch msg.String() {
 	case "tab":
-		m.wsAddFocus = 1 - m.wsAddFocus // toggle between 0 and 1
+		m.wsAddFocus = 1 - m.wsAddFocus
 	case "enter":
 		name := strings.TrimSpace(m.wsAddName)
 		insight := strings.TrimSpace(m.wsAddInsight)
@@ -449,25 +395,11 @@ func (m *youModel) navDown() {
 		} else if len(m.availableInvites()) > 0 {
 			m.section = youSectionInvites
 			m.inviteCursor = 0
-		} else if len(m.cards) > 0 {
-			m.section = youSectionLeaderboard
-			m.cursor = 0
 		}
 	case youSectionInvites:
 		avail := m.availableInvites()
 		if m.inviteCursor < len(avail)-1 {
 			m.inviteCursor++
-		} else if len(m.cards) > 0 {
-			m.section = youSectionLeaderboard
-			m.cursor = 0
-		}
-	case youSectionLeaderboard:
-		maxRows := len(m.cards)
-		if maxRows > 10 {
-			maxRows = 10
-		}
-		if m.cursor < maxRows-1 {
-			m.cursor++
 		}
 	}
 }
@@ -488,38 +420,22 @@ func (m *youModel) navUp() {
 		} else {
 			m.section = youSectionWorkshop
 		}
-	case youSectionLeaderboard:
-		if m.cursor > 0 {
-			m.cursor--
-		} else if len(m.availableInvites()) > 0 {
-			m.section = youSectionInvites
-			m.inviteCursor = len(m.availableInvites()) - 1
-		} else {
-			m.section = youSectionWorkshop
-			if len(m.projects) > 0 {
-				m.wsCursor = len(m.projects) - 1
-			}
-		}
 	}
 }
 
 // helpKeys returns context-sensitive help text based on the current state.
 func (m youModel) helpKeys() string {
 	switch m.wsState {
-	case wsEditing:
-		return " " + helpEntry("enter", "save") + "  " + helpEntry("esc", "cancel")
-	case wsAdding:
-		return " " + helpEntry("tab", "next") + "  " + helpEntry("enter", "save") + "  " + helpEntry("esc", "cancel")
+	case wsEditing, wsAdding:
+		return helpEntry("tab", "next") + "  " + helpEntry("enter", "save") + "  " + helpEntry("esc", "cancel")
 	case wsDeleting:
-		return " " + helpEntry("y", "confirm") + "  " + helpEntry("n", "cancel")
+		return helpEntry("y", "confirm") + "  " + helpEntry("n", "cancel")
 	default:
 		switch m.section {
 		case youSectionInvites:
-			return " " + helpEntry("j/k", "nav") + "  " + helpEntry("c", "copy link") + "  " + helpEntry("h", "help") + "  " + helpEntry("q", "quit")
-		case youSectionLeaderboard:
-			return " " + helpEntry("j/k", "nav") + "  " + helpEntry("f", "follow") + "  " + helpEntry("p", "peek") + "  " + helpEntry("h", "help") + "  " + helpEntry("q", "quit")
+			return helpEntry("j/k", "nav") + "  " + helpEntry("c", "copy link") + "  " + helpEntry("h", "help") + "  " + helpEntry("q", "quit")
 		default:
-			return " " + helpEntry("j/k", "nav") + "  " + helpEntry("e", "edit") + "  " + helpEntry("a", "add") + "  " + helpEntry("d", "remove") + "  " + helpEntry("h", "help") + "  " + helpEntry("q", "quit")
+			return helpEntry("j/k", "nav") + "  " + helpEntry("e", "edit") + "  " + helpEntry("a", "add") + "  " + helpEntry("d", "remove") + "  " + helpEntry("h", "help") + "  " + helpEntry("q", "quit")
 		}
 	}
 }
@@ -564,28 +480,31 @@ func (m youModel) View() string {
 		sb.WriteString("\n " + upvoteStyle.Render(m.statusMsg) + "\n")
 	}
 
-	// -- Route to browse panel or unified view --
-	if m.browsing {
-		sb.WriteString(m.viewWorkshop())
-	} else {
-		sb.WriteString(m.viewWorkshopSection())
-		sb.WriteString(m.viewInvitesSection())
-		sb.WriteString(m.viewLeaderboardSection())
-		sb.WriteString(" " + helpKeyStyle.Render("b") + " " + helpLabelStyle.Render("browse all magicians →") + "\n")
-	}
+	sb.WriteString(m.viewWorkshopSection())
+	sb.WriteString(m.viewInvitesSection())
 
 	return sb.String()
 }
 
-// viewWorkshopSection renders the compact workshop project list for the unified view.
+// projectStatus returns "shipped" if any update has kind "ship", else "building".
+func projectStatus(updates []domain.ProjectUpdate) string {
+	for _, u := range updates {
+		if u.Kind == "ship" {
+			return "shipped"
+		}
+	}
+	return "building"
+}
+
+// viewWorkshopSection renders the compact workshop project list.
 func (m youModel) viewWorkshopSection() string {
 	var sb strings.Builder
 
 	sb.WriteString("\n " + sectionHeaderStyle.Render(fmt.Sprintf("── WORKSHOP %d projects ──", len(m.projects))) + "\n")
 
-	// Adding mode: two-field form
-	if m.wsState == wsAdding {
-		sb.WriteString(m.renderAddForm())
+	// Adding/editing mode: two-field form
+	if m.wsState == wsAdding || m.wsState == wsEditing {
+		sb.WriteString(m.renderEditForm())
 		return sb.String()
 	}
 
@@ -615,16 +534,19 @@ func (m youModel) viewWorkshopSection() string {
 
 		dateStr := metaStyle.Render(formatTime(proj.UpdatedAt))
 
-		// Edit mode on selected row
-		if i == m.wsCursor && m.wsState == wsEditing {
-			fmt.Fprintf(&sb, " %s%s  %s\n", cursor, nameStr, dateStr)
-			sb.WriteString("   " + inputPromptStyle.Render(">") + " " + m.wsEditText + accentStyle.Render("_") + "\n")
-			continue
+		badge := ""
+		if updates, ok := m.projectUpdates[proj.ID.String()]; ok {
+			status := projectStatus(updates)
+			if status == "shipped" {
+				badge = " " + accentStyle.Render("[shipped]")
+			} else {
+				badge = " " + dimStyle.Render("[building]")
+			}
 		}
 
 		// Delete confirmation on selected row
 		if i == m.wsCursor && m.wsState == wsDeleting {
-			fmt.Fprintf(&sb, " %s%s  %s\n", cursor, nameStr, dateStr)
+			fmt.Fprintf(&sb, " %s%s  %s%s\n", cursor, nameStr, dateStr, badge)
 			sb.WriteString("   " + rejectStyle.Render("delete this project? ") +
 				accentStyle.Render("y") + dimStyle.Render("/") + dimStyle.Render("n") + "\n")
 			continue
@@ -635,13 +557,13 @@ func (m youModel) viewWorkshopSection() string {
 			insightStr = "\n     " + dimStyle.Render(proj.Insight)
 		}
 
-		fmt.Fprintf(&sb, " %s%s  %s%s\n", cursor, nameStr, dateStr, insightStr)
+		fmt.Fprintf(&sb, " %s%s  %s%s%s\n", cursor, nameStr, dateStr, badge, insightStr)
 	}
 
 	return sb.String()
 }
 
-// viewInvitesSection renders the invites section for the unified view.
+// viewInvitesSection renders the invites section.
 func (m youModel) viewInvitesSection() string {
 	if len(m.invites) == 0 {
 		return ""
@@ -671,177 +593,7 @@ func (m youModel) viewInvitesSection() string {
 	return sb.String()
 }
 
-// viewLeaderboardSection renders the compact leaderboard for the unified view.
-func (m youModel) viewLeaderboardSection() string {
-	var sb strings.Builder
-
-	sb.WriteString("\n " + sectionHeaderStyle.Render(fmt.Sprintf("── LEADERBOARD %d magicians ──", len(m.cards))) + "\n")
-
-	if m.loading && len(m.cards) == 0 {
-		sb.WriteString(" " + dimStyle.Render("loading...") + "\n")
-		return sb.String()
-	}
-	if m.err != "" {
-		sb.WriteString(" " + dimStyle.Render("error: "+m.err) + "\n")
-		return sb.String()
-	}
-
-	maxRows := len(m.cards)
-	if maxRows > 10 {
-		maxRows = 10
-	}
-
-	for i := 0; i < maxRows; i++ {
-		card := m.cards[i]
-		rank := i + 1
-		isActive := i == m.cursor && m.section == youSectionLeaderboard
-
-		isYou := m.me != nil && card.GitHubLogin == m.me.GitHubLogin
-
-		cursor := " "
-		if isActive {
-			cursor = accentStyle.Render("▸")
-		}
-
-		rankLabel := fmt.Sprintf("#%-3d", rank)
-		rankStr := rankStyle(rank).Render(rankLabel)
-		if isYou {
-			rankStr = accentStyle.Render(rankLabel)
-		}
-
-		var loginStyled string
-		if isYou {
-			loginStyled = selectedStyle.Render(fmt.Sprintf("%-16s", "you"))
-		} else {
-			loginStyled = GuildStyle(card.GuildID).Render(fmt.Sprintf("%-16s", card.GitHubLogin))
-		}
-
-		spells := metaStyle.Render(fmt.Sprintf("%d spells", card.SpellCount))
-
-		// Movement column
-		moveStr := renderMove(card.Move)
-
-		// Potency column
-		potencyStr := ""
-		if card.TotalPotency > 0 {
-			potencyStr = potencyStyle(card.TotalPotency).Render(fmt.Sprintf("P%d", card.TotalPotency))
-		}
-
-		youMarker := ""
-		if isYou {
-			youMarker = " " + accentStyle.Render("<- you")
-		}
-
-		row := fmt.Sprintf(" %s %s  %s  %s", cursor, rankStr, loginStyled, spells)
-		if potencyStr != "" {
-			row += "  " + potencyStr
-		}
-		if moveStr != "" {
-			row += "  " + moveStr
-		}
-		row += youMarker + "\n"
-		sb.WriteString(row)
-	}
-
-	return sb.String()
-}
-
-func (m youModel) viewWorkshop() string {
-	var sb strings.Builder
-
-	sb.WriteString("\n " + sectionHeaderStyle.Render(fmt.Sprintf("── WORKSHOP %d projects ──", len(m.projects))) + "\n")
-
-	// Adding mode: two-field form
-	if m.wsState == wsAdding {
-		sb.WriteString(m.renderAddForm())
-		return sb.String()
-	}
-
-	if len(m.projects) == 0 && m.wsState != wsAdding {
-		sb.WriteString("   " + dimStyle.Render("no projects yet · press a to add one") + "\n")
-		return sb.String()
-	}
-
-	for i, proj := range m.projects {
-		isSelected := i == m.wsCursor
-
-		cursor := "  "
-		if isSelected {
-			cursor = accentStyle.Render("▸") + " "
-		}
-
-		nameStr := normalStyle.Render(truncStr(proj.Name, 24))
-		if isSelected {
-			nameStr = selectedStyle.Render(truncStr(proj.Name, 24))
-		}
-
-		dateStr := metaStyle.Render(formatTime(proj.UpdatedAt))
-
-		// Edit mode on selected row
-		if i == m.wsCursor && m.wsState == wsEditing {
-			fmt.Fprintf(&sb, " %s%s  %s\n", cursor, nameStr, dateStr)
-			sb.WriteString("   " + inputPromptStyle.Render(">") + " " + m.wsEditText + accentStyle.Render("_") + "\n")
-			continue
-		}
-
-		// Delete confirmation on selected row
-		if i == m.wsCursor && m.wsState == wsDeleting {
-			fmt.Fprintf(&sb, " %s%s  %s\n", cursor, nameStr, dateStr)
-			sb.WriteString("   " + rejectStyle.Render("delete this project? ") +
-				accentStyle.Render("y") + dimStyle.Render("/") + dimStyle.Render("n") + "\n")
-			continue
-		}
-
-		insightStr := ""
-		if proj.Insight != "" {
-			insightStr = "  " + dimStyle.Render(proj.Insight)
-		}
-
-		fmt.Fprintf(&sb, " %s%s  %s%s\n", cursor, nameStr, dateStr, insightStr)
-	}
-
-	// Browse panel: show leaderboard cards enriched with emblem + project info
-	if len(m.cards) > 0 {
-		sb.WriteString("\n " + sectionHeaderStyle.Render("── BROWSE ──") + "\n")
-		maxBrowse := m.height - 20
-		if maxBrowse < 3 {
-			maxBrowse = 6
-		}
-		shown := len(m.cards)
-		if shown > maxBrowse {
-			shown = maxBrowse
-		}
-		for i := 0; i < shown; i++ {
-			card := m.cards[i]
-			emblem := card.Emblem
-			if emblem == "" {
-				emblem = GuildEmblem(card.GuildID)
-			}
-
-			nameColored := GuildStyle(card.GuildID).Render(card.GitHubLogin)
-			details := []string{card.GuildID}
-			details = append(details, fmt.Sprintf("%d spells", card.SpellCount))
-			if card.TotalPotency > 0 {
-				details = append(details, fmt.Sprintf("P%d", card.TotalPotency))
-			}
-			if card.City != "" {
-				details = append(details, card.City)
-			}
-			detailStr := metaStyle.Render(strings.Join(details, " · "))
-
-			line := "   "
-			if emblem != "" {
-				line += emblem + " "
-			}
-			line += nameColored + " " + detailStr + "\n"
-			sb.WriteString(line)
-		}
-	}
-
-	return sb.String()
-}
-
-func (m youModel) renderAddForm() string {
+func (m youModel) renderEditForm() string {
 	var sb strings.Builder
 	sb.WriteString("\n")
 
@@ -867,11 +619,11 @@ func (m youModel) renderAddForm() string {
 
 	sb.WriteString(nameLine + "\n")
 	sb.WriteString(insightLine + "\n")
+	sb.WriteString("   " + dimStyle.Render("tab next · enter save · esc cancel") + "\n")
 	return sb.String()
 }
 
 // grimoireQuip returns a short italic-gold flavor line based on the magician's profile.
-// It uses archetype when available and falls back to a generic line.
 func grimoireQuip(me *domain.Magician) string {
 	if me == nil {
 		return ""
@@ -890,31 +642,4 @@ func grimoireQuip(me *domain.Magician) string {
 		}
 	}
 	return "your spells shape the realm."
-}
-
-// rankStyle returns a colored style based on leaderboard position.
-func rankStyle(rank int) lipgloss.Style {
-	switch rank {
-	case 1:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("#60a5fa")) // blue
-	case 2:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("#f87171")) // red
-	case 3:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("#facc15")) // yellow
-	default:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("#8891a5")) // soft slate
-	}
-}
-
-// renderMove formats a leaderboard rank movement value as colored text.
-// Positive values are rendered green (↑N), negative red (↓N), zero dim (–).
-func renderMove(move int) string {
-	switch {
-	case move > 0:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("#4ade80")).Render(fmt.Sprintf("↑%d", move))
-	case move < 0:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("#b45555")).Render(fmt.Sprintf("↓%d", -move))
-	default:
-		return dimStyle.Render("–")
-	}
 }

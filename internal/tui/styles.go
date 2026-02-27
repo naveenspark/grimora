@@ -138,9 +138,6 @@ var (
 	castStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#22d3ee"))
 
-	joinStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#34d474"))
-
 	rejectStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#b45555"))
 
@@ -182,30 +179,6 @@ var (
 		"conversation":  lipgloss.Color("#8890a0"),
 		"general":       lipgloss.Color("#606878"),
 	}
-
-	// Featured / extended event styles
-	featuredStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#e879f9"))
-
-	voiceDimStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#606878")).
-			Italic(true)
-
-	userMsgStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#e4e4ec")).
-			Bold(true)
-
-	featNameStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#e879f9")).
-			Bold(true)
-
-	featProjectStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#e4e4ec")).
-				Bold(true)
-
-	featInsightStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#b090d0")).
-				Italic(true)
 
 	sectionHeaderStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#606878"))
@@ -307,6 +280,20 @@ func GuildBadge(guildID string) string {
 	}
 	label := "[" + guildID + "]"
 	return GuildStyle(guildID).Render(label)
+}
+
+// rankStyle returns a colored style based on leaderboard position.
+func rankStyle(rank int) lipgloss.Style {
+	switch rank {
+	case 1:
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("#60a5fa")) // blue
+	case 2:
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("#f87171")) // red
+	case 3:
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("#facc15")) // yellow
+	default:
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("#8891a5")) // soft slate
+	}
 }
 
 // potencyStyle returns a style for the given potency level.

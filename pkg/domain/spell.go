@@ -18,11 +18,11 @@ type Spell struct {
 	Potency    int       `json:"potency"`
 	Status     string    `json:"status"` // "pending", "published", "removed"
 	Upvotes    int       `json:"upvotes"`
-	Preview    string    `json:"preview,omitempty"`  // Truncated text for list views
-	Voice      string    `json:"voice,omitempty"`    // Grimoire commentary
+	Preview    string    `json:"preview,omitempty"`    // Truncated text for list views
+	Voice      string    `json:"voice,omitempty"`      // Grimoire commentary
 	Situations string    `json:"situations,omitempty"` // LLM-generated search situations
-	Author     *Author   `json:"author,omitempty"`   // Author info for display
-	Comments   []Comment `json:"comments,omitempty"` // Spell comments
+	Author     *Author   `json:"author,omitempty"`     // Author info for display
+	Comments   []Comment `json:"comments,omitempty"`   // Spell comments
 	CreatedAt  time.Time `json:"created_at"`
 }
 

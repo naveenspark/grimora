@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/naveenspark/grimora/pkg/domain"
@@ -342,6 +343,34 @@ func (c *Client) DeleteWorkshopProject(ctx context.Context, id string) error {
 	return nil
 }
 
+// GetLeaderboard returns ranked magicians with optional guild/city filters.
+func (c *Client) GetLeaderboard(ctx context.Context, guild, city string, limit, offset int) ([]domain.LeaderboardEntry, error) {
+	params := url.Values{}
+	if guild != "" {
+		params.Set("guild", guild)
+	}
+	if city != "" {
+		params.Set("city", city)
+	}
+	params.Set("limit", strconv.Itoa(limit))
+	params.Set("offset", strconv.Itoa(offset))
+
+	var entries []domain.LeaderboardEntry
+	if err := c.get(ctx, "/api/leaderboard?"+params.Encode(), &entries); err != nil {
+		return nil, fmt.Errorf("client.GetLeaderboard: %w", err)
+	}
+	return entries, nil
+}
+
+// ListProjectUpdates returns timeline entries for a workshop project.
+func (c *Client) ListProjectUpdates(ctx context.Context, projectID string) ([]domain.ProjectUpdate, error) {
+	var updates []domain.ProjectUpdate
+	if err := c.get(ctx, "/api/workshop/"+projectID+"/updates", &updates); err != nil {
+		return nil, fmt.Errorf("client.ListProjectUpdates: %w", err)
+	}
+	return updates, nil
+}
+
 // GetMagicianWorkshop returns a magician's workshop projects (public view).
 func (c *Client) GetMagicianWorkshop(ctx context.Context, login string) ([]domain.WorkshopProject, error) {
 	var projects []domain.WorkshopProject
@@ -400,6 +429,25 @@ func (c *Client) GetRoomMessages(ctx context.Context, slug string, before time.T
 		return nil, fmt.Errorf("client.GetRoomMessages: %w", err)
 	}
 	return msgs, nil
+}
+
+// ReactionCount is an emoji + count pair from the reaction counts endpoint.
+type ReactionCount struct {
+	Emoji string `json:"emoji"`
+	Count int    `json:"count"`
+}
+
+// GetReactionCounts fetches batch reaction counts for a set of message IDs.
+func (c *Client) GetReactionCounts(ctx context.Context, slug string, msgIDs []string) (map[string][]ReactionCount, error) {
+	if len(msgIDs) == 0 {
+		return nil, nil
+	}
+	ids := strings.Join(msgIDs, ",")
+	var result map[string][]ReactionCount
+	if err := c.get(ctx, "/api/rooms/"+slug+"/messages/reactions?ids="+ids, &result); err != nil {
+		return nil, fmt.Errorf("client.GetReactionCounts: %w", err)
+	}
+	return result, nil
 }
 
 // SendRoomMessage posts a message to a chat room.

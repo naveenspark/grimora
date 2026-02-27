@@ -46,7 +46,7 @@ func makeTarGz(t *testing.T, dest string, entries map[string]string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck
 
 	gw := gzip.NewWriter(f)
 	tw := tar.NewWriter(gw)
@@ -188,7 +188,7 @@ func TestVerifyChecksum(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error for mismatched checksum")
 		}
-		if got := err.Error(); !strings.Contains(got,"checksum mismatch") {
+		if got := err.Error(); !strings.Contains(got, "checksum mismatch") {
 			t.Errorf("unexpected error: %v", err)
 		}
 	})
@@ -211,9 +211,8 @@ func TestVerifyChecksum(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error for missing checksum entry")
 		}
-		if got := err.Error(); !strings.Contains(got,"no checksum found") {
+		if got := err.Error(); !strings.Contains(got, "no checksum found") {
 			t.Errorf("unexpected error: %v", err)
 		}
 	})
 }
-
