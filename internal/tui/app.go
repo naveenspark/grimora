@@ -398,7 +398,7 @@ func (a App) View() string {
 		if a.grimoire.detail {
 			help = " " + helpEntry(tabsHelp, "tabs") + "  " + helpEntry("u", "upvote") + "  " + helpEntry("c", "copy") + "  " + helpEntry("s", "save") + "  " + helpEntry("p", "peek") + "  " + helpEntry("esc", "back")
 		} else {
-			help = " " + helpEntry(tabsHelp, "tabs") + "  " + helpEntry("j/k", "nav") + "  " + helpEntry("/", "search") + "  " + helpEntry("w", "toggle") + "  " + helpEntry("t", "tag") + "  " + helpEntry("s", "sort") + "  " + helpEntry("n", "forge") + "  " + helpEntry("h", "help") + "  " + helpEntry("q", "quit")
+			help = " " + helpEntry(tabsHelp, "tabs") + "  " + helpEntry("j/k", "nav") + "  " + helpEntry("/", "search") + "  " + helpEntry("t", "tag") + "  " + helpEntry("s", "sort") + "  " + helpEntry("w", "toggle") + "  " + helpEntry("q", "quit")
 		}
 	case viewThreads:
 		body = a.threads.View()

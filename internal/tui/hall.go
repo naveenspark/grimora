@@ -894,12 +894,13 @@ func (m hallModel) renderInput() string {
 	const timeIndent = "           " // 11 spaces — matches " " + 8-char timestamp + "  "
 
 	sep := chatSepStyle.Render(" · ")
-	namePart := chatInputNameStyle.Render("you")
+	namePart := renderAnimatedYou(m.cursorOn)
 	placeholder := "say something..."
 	if m.myLogin == "" {
 		placeholder = "grimora login to chat"
 	}
 	if !m.inputFocused {
+		namePart = chatInputNameStyle.Render("you")
 		if m.input == "" {
 			return timeIndent + namePart + sep + inputPlaceholderStyle.Render(placeholder)
 		}

@@ -515,8 +515,9 @@ func (m grimoireModel) viewSpellList() string {
 			rightWidth += 4
 		}
 
-		// Title fills remaining space
-		titleWidth := m.width - 4 - rightWidth // 4 = cursor(2) + dot(2)
+		// Title fills remaining space.
+		// Account for " " before join + N-1 join spaces = len(rightParts) total.
+		titleWidth := m.width - 4 - rightWidth - len(rightParts) // 4 = cursor(2) + dot(2)
 		if titleWidth < 10 {
 			titleWidth = 10
 		}

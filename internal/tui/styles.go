@@ -410,6 +410,24 @@ func hexToRGB(hex string) (int, int, int) {
 	return r, g, b
 }
 
+// renderAnimatedYou renders "you" with alternating emerald shades tied to the
+// cursor blink cycle. When focused, the letters shimmer between two greens.
+func renderAnimatedYou(cursorOn bool) string {
+	// Two emerald shades that alternate per-letter on each blink tick.
+	bright := lipgloss.Color("#4ade80")
+	dim := lipgloss.Color("#34d474")
+	var a, b lipgloss.Color
+	if cursorOn {
+		a, b = bright, dim
+	} else {
+		a, b = dim, bright
+	}
+	y := lipgloss.NewStyle().Foreground(a).Bold(true).Render("y")
+	o := lipgloss.NewStyle().Foreground(b).Bold(true).Render("o")
+	u := lipgloss.NewStyle().Foreground(a).Bold(true).Render("u")
+	return y + o + u
+}
+
 // helpEntry renders a single "key label" pair for help bars.
 func helpEntry(key, label string) string {
 	return helpKeyStyle.Render(key) + " " + helpLabelStyle.Render(label)
