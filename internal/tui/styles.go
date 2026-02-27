@@ -407,20 +407,26 @@ func hexToRGB(hex string) (int, int, int) {
 	return r, g, b
 }
 
-// renderAnimatedYou renders "you" with alternating emerald shades tied to the
-// cursor blink cycle. Letters shimmer between bright emerald and a deeper green.
-func renderAnimatedYou(cursorOn bool) string {
+// renderAnimatedYou renders "you" with a 3-frame sweep animation.
+// A bright highlight moves left-to-right across the three letters.
+func renderAnimatedYou(frame int) string {
 	bright := lipgloss.Color("#4ade80")
+	mid := lipgloss.Color("#22c55e")
 	deep := lipgloss.Color("#16a34a")
-	var a, b lipgloss.Color
-	if cursorOn {
-		a, b = bright, deep
-	} else {
-		a, b = deep, bright
+
+	// Sweep pattern: highlight travels y → o → u
+	var yc, oc, uc lipgloss.Color
+	switch frame % 3 {
+	case 0: // highlight on y
+		yc, oc, uc = bright, mid, deep
+	case 1: // highlight on o
+		yc, oc, uc = deep, bright, mid
+	default: // highlight on u
+		yc, oc, uc = mid, deep, bright
 	}
-	y := lipgloss.NewStyle().Foreground(a).Bold(true).Render("y")
-	o := lipgloss.NewStyle().Foreground(b).Bold(true).Render("o")
-	u := lipgloss.NewStyle().Foreground(a).Bold(true).Render("u")
+	y := lipgloss.NewStyle().Foreground(yc).Bold(true).Render("y")
+	o := lipgloss.NewStyle().Foreground(oc).Bold(true).Render("o")
+	u := lipgloss.NewStyle().Foreground(uc).Bold(true).Render("u")
 	return y + o + u
 }
 

@@ -38,7 +38,7 @@ type hallAnimTickMsg time.Time
 type cursorBlinkMsg struct{}
 
 func cursorBlinkCmd() tea.Cmd {
-	return tea.Tick(530*time.Millisecond, func(time.Time) tea.Msg {
+	return tea.Tick(300*time.Millisecond, func(time.Time) tea.Msg {
 		return cursorBlinkMsg{}
 	})
 }
@@ -127,7 +127,7 @@ type hallModel struct {
 	seenIDs        map[string]bool
 	presenceCount  int
 	presenceLogins []string
-	cursorOn       bool // blink state for input cursor
+	animFrame      int // 0-2 sweep frame for "you" label + cursor blink
 
 	// @mention autocomplete state
 	mentionActive  bool
@@ -344,7 +344,7 @@ func (m hallModel) Update(msg tea.Msg) (hallModel, tea.Cmd) {
 		return m, m.loadMessages()
 
 	case cursorBlinkMsg:
-		m.cursorOn = !m.cursorOn
+		m.animFrame = (m.animFrame + 1) % 3
 		return m, cursorBlinkCmd()
 
 	case hallAnimTickMsg:
@@ -365,8 +365,8 @@ func (m hallModel) Update(msg tea.Msg) (hallModel, tea.Cmd) {
 		return m, hallAnimTickCmd() // keep ticking to catch new messages
 
 	case tea.KeyMsg:
-		// Any keypress resets cursor to visible
-		m.cursorOn = true
+		// Any keypress resets sweep to frame 0 (bright on 'y', cursor visible)
+		m.animFrame = 0
 		if m.inputFocused {
 			return m.updateInput(msg)
 		}
@@ -602,7 +602,7 @@ func (m hallModel) updateNav(msg tea.KeyMsg) (hallModel, tea.Cmd) {
 		}
 	case "enter", "i", "/":
 		m.inputFocused = true
-		m.cursorOn = true
+		m.animFrame = 0
 		m.status = ""
 	}
 	return m, nil
@@ -892,7 +892,7 @@ func (m hallModel) renderInput() string {
 	const timeIndent = "           " // 11 spaces — matches " " + 8-char timestamp + "  "
 
 	sep := chatSepStyle.Render(" · ")
-	namePart := renderAnimatedYou(m.cursorOn)
+	namePart := renderAnimatedYou(m.animFrame)
 	placeholder := "say something..."
 	if m.myLogin == "" {
 		placeholder = "grimora login to chat"
@@ -904,7 +904,7 @@ func (m hallModel) renderInput() string {
 		return timeIndent + namePart + sep + dimStyle.Render(m.input)
 	}
 	cursor := " "
-	if m.cursorOn {
+	if m.animFrame%2 == 0 {
 		cursor = accentStyle.Render("█")
 	}
 	if m.input == "" {

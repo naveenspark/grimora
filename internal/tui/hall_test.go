@@ -351,7 +351,7 @@ func TestHallViewLineCount(t *testing.T) {
 				m.myLogin = "naveenspark"
 				m.connected = true
 				m.input = "/"
-				m.cursorOn = true
+				m.animFrame = 0
 				for i := 0; i < 5; i++ {
 					id := fmt.Sprintf("msg-%d", i)
 					m.seenIDs[id] = true
@@ -369,7 +369,7 @@ func TestHallViewLineCount(t *testing.T) {
 				m.myLogin = "naveenspark"
 				m.connected = true
 				m.input = "#"
-				m.cursorOn = true
+				m.animFrame = 0
 				m.projectActive = true
 				m.projectQuery = ""
 				m.myProjects = []domain.WorkshopProject{
@@ -412,7 +412,7 @@ func TestHallCursorVisibleWhenFocused(t *testing.T) {
 	m := newTestHallModel()
 	m.myLogin = "naveenspark"
 	m.connected = true
-	m.cursorOn = true // ensure cursor is in visible phase
+	m.animFrame = 0 // frame 0 = cursor visible (even frame)
 	m.presenceCount = 2
 
 	// Add a few messages
@@ -427,7 +427,7 @@ func TestHallCursorVisibleWhenFocused(t *testing.T) {
 
 	view := m.View()
 	if !strings.Contains(view, "█") {
-		t.Error("expected cursor block '█' in view when inputFocused=true and cursorOn=true")
+		t.Error("expected cursor block '█' in view when inputFocused=true and animFrame=0")
 		lines := strings.Split(view, "\n")
 		for i, line := range lines {
 			t.Logf("  %2d: %q", i, line)

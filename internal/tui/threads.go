@@ -74,7 +74,7 @@ type threadsModel struct {
 	messages        []domain.Message
 	input           string
 	inputFocused    bool
-	cursorOn        bool
+	animFrame       int
 	status          string
 
 	// new thread
@@ -172,7 +172,7 @@ func (m threadsModel) Update(msg tea.Msg) (threadsModel, tea.Cmd) {
 			m.openThreadLogin = msg.thread.OtherLogin
 			m.openThreadGuild = msg.thread.OtherGuildID
 			m.inputFocused = true
-			m.cursorOn = true
+			m.animFrame = 0
 			m.input = ""
 			m.startInput = ""
 			return m, tea.Batch(m.loadMessages(), cursorBlinkCmd())
@@ -185,12 +185,12 @@ func (m threadsModel) Update(msg tea.Msg) (threadsModel, tea.Cmd) {
 
 	case cursorBlinkMsg:
 		if m.inputFocused {
-			m.cursorOn = !m.cursorOn
+			m.animFrame = (m.animFrame + 1) % 3
 		}
 		return m, cursorBlinkCmd()
 
 	case tea.KeyMsg:
-		m.cursorOn = true
+		m.animFrame = 0
 		switch m.state {
 		case threadsListState:
 			return m.updateList(msg)
@@ -219,7 +219,7 @@ func (m threadsModel) updateList(msg tea.KeyMsg) (threadsModel, tea.Cmd) {
 			m.openThreadLogin = thread.OtherLogin
 			m.openThreadGuild = thread.OtherGuildID
 			m.inputFocused = true
-			m.cursorOn = true
+			m.animFrame = 0
 			m.input = ""
 			return m, tea.Batch(m.loadMessages(), cursorBlinkCmd())
 		}
@@ -272,7 +272,7 @@ func (m threadsModel) updateConvo(msg tea.KeyMsg) (threadsModel, tea.Cmd) {
 		return m, m.loadThreads()
 	case "enter", "i":
 		m.inputFocused = true
-		m.cursorOn = true
+		m.animFrame = 0
 		return m, nil
 	}
 	return m, nil
@@ -440,7 +440,7 @@ func (m threadsModel) renderConvoInput() string {
 	const timeIndent = "           " // 11 spaces — matches " " + 8-char timestamp + "  "
 
 	sep := chatSepStyle.Render(" · ")
-	namePart := renderAnimatedYou(m.cursorOn)
+	namePart := renderAnimatedYou(m.animFrame)
 	if !m.inputFocused {
 		if m.input == "" {
 			return timeIndent + namePart + sep + inputPlaceholderStyle.Render("type a message...")
@@ -448,7 +448,7 @@ func (m threadsModel) renderConvoInput() string {
 		return timeIndent + namePart + sep + dimStyle.Render(m.input)
 	}
 	cursor := " "
-	if m.cursorOn {
+	if m.animFrame%2 == 0 {
 		cursor = accentStyle.Render("█")
 	}
 	if m.input == "" {

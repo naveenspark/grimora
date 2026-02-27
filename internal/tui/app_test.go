@@ -284,7 +284,7 @@ func TestAppHallLayoutFitsTerminal(t *testing.T) {
 	a.hall.myLogin = "naveenspark"
 	a.hall.connected = true
 	a.hall.presenceCount = 3
-	a.hall.cursorOn = true
+	a.hall.animFrame = 0
 
 	for i := 0; i < 5; i++ {
 		id := fmt.Sprintf("msg-%d", i)
@@ -325,7 +325,7 @@ func TestAppHallLayoutConnectingState(t *testing.T) {
 	a := newTestApp()
 	model, _ := a.Update(tea.WindowSizeMsg{Width: 80, Height: termHeight})
 	a = model.(App)
-	a.hall.cursorOn = true
+	a.hall.animFrame = 0
 
 	view := a.View()
 	lines := strings.Split(view, "\n")
