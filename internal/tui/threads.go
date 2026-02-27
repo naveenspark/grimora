@@ -437,22 +437,24 @@ func (m threadsModel) renderThreadMessage(msg domain.Message) string {
 }
 
 func (m threadsModel) renderConvoInput() string {
-	prompt := inputPromptStyle.Render("> ")
+	const timeIndent = "          " // 10 spaces — matches timestamp + gap
+
+	sep := chatSepStyle.Render(" · ")
+	namePart := chatSelfNameStyle.Render("you")
 	if !m.inputFocused {
 		if m.input == "" {
-			return " " + prompt + inputPlaceholderStyle.Render("type a message...")
+			return timeIndent + namePart + sep + inputPlaceholderStyle.Render("type a message...")
 		}
-		return " " + prompt + dimStyle.Render(m.input)
+		return timeIndent + namePart + sep + dimStyle.Render(m.input)
 	}
-	text := m.input
 	cursor := " "
 	if m.cursorOn {
 		cursor = accentStyle.Render("█")
 	}
-	if text == "" {
-		return " " + prompt + cursor
+	if m.input == "" {
+		return timeIndent + namePart + sep + cursor
 	}
-	return " " + prompt + chatSelfTextStyle.Render(text) + cursor
+	return timeIndent + namePart + sep + chatSelfTextStyle.Render(m.input) + cursor
 }
 
 func (m threadsModel) helpKeys() string {

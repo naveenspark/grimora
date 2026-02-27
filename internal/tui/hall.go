@@ -895,29 +895,32 @@ func potencyFromStr(s string) int {
 	}
 }
 
-// renderInput renders the text input line at the bottom.
+// renderInput renders the text input line aligned with the message name column.
+// The 10-space indent matches the 8-char timestamp field + 2 trailing spaces
+// in renderPlainMessage, so the cursor sits where sent messages appear.
 func (m hallModel) renderInput() string {
-	prompt := inputPromptStyle.Render("> ")
+	const timeIndent = "          " // 10 spaces — matches timestamp + gap
+
+	sep := chatSepStyle.Render(" · ")
+	namePart := chatSelfNameStyle.Render("you")
 	placeholder := "say something..."
 	if m.myLogin == "" {
 		placeholder = "grimora login to chat"
 	}
 	if !m.inputFocused {
 		if m.input == "" {
-			return " " + prompt + inputPlaceholderStyle.Render(placeholder)
+			return timeIndent + namePart + sep + inputPlaceholderStyle.Render(placeholder)
 		}
-		return " " + prompt + dimStyle.Render(m.input)
+		return timeIndent + namePart + sep + dimStyle.Render(m.input)
 	}
-	// Focused: show text with blinking cursor block.
-	text := m.input
-	cursor := " " // invisible phase
+	cursor := " "
 	if m.cursorOn {
 		cursor = accentStyle.Render("█")
 	}
-	if text == "" {
-		return " " + prompt + cursor
+	if m.input == "" {
+		return timeIndent + namePart + sep + cursor
 	}
-	return " " + prompt + chatSelfTextStyle.Render(text) + cursor
+	return timeIndent + namePart + sep + chatSelfTextStyle.Render(m.input) + cursor
 }
 
 // slashCommands defines the available slash commands and their descriptions.
