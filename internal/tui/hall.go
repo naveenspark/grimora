@@ -80,6 +80,11 @@ type hallProjectsMsg struct {
 	err      error
 }
 
+// hallLoginsMsg carries all registered logins for @mention autocomplete.
+type hallLoginsMsg struct {
+	logins []string
+}
+
 // reactionCount is an emoji + count for display.
 type reactionCount struct {
 	Emoji string
@@ -131,6 +136,7 @@ type hallModel struct {
 	animFrame      int // 0-2 sweep frame for "you" label + cursor blink
 
 	// @mention autocomplete state
+	allLogins      []string // all registered logins (pre-fetched for autocomplete)
 	mentionActive  bool
 	mentionQuery   string
 	mentionMatches []string
@@ -153,7 +159,7 @@ func newHallModel(c *client.Client) hallModel {
 }
 
 func (m hallModel) Init() tea.Cmd {
-	return tea.Batch(m.loadMessages(), m.loadProjects(), cursorBlinkCmd(), hallAnimTickCmd())
+	return tea.Batch(m.loadMessages(), m.loadProjects(), m.loadAllLogins(), cursorBlinkCmd(), hallAnimTickCmd())
 }
 
 // loadProjects fetches the user's workshop projects for # autocomplete.
@@ -165,6 +171,27 @@ func (m hallModel) loadProjects() tea.Cmd {
 	return func() tea.Msg {
 		projects, err := c.ListWorkshopProjects(context.Background())
 		return hallProjectsMsg{projects: projects, err: err}
+	}
+}
+
+// loadAllLogins fetches all registered logins for @mention autocomplete.
+func (m hallModel) loadAllLogins() tea.Cmd {
+	c := m.client
+	if c == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		cards, err := c.ListMagicians(context.Background(), 200, 0)
+		if err != nil {
+			return hallLoginsMsg{}
+		}
+		logins := make([]string, 0, len(cards))
+		for _, card := range cards {
+			if card.GitHubLogin != "" {
+				logins = append(logins, card.GitHubLogin)
+			}
+		}
+		return hallLoginsMsg{logins: logins}
 	}
 }
 
@@ -331,6 +358,10 @@ func (m hallModel) Update(msg tea.Msg) (hallModel, tea.Cmd) {
 		if msg.err == nil {
 			m.myProjects = msg.projects
 		}
+		return m, nil
+
+	case hallLoginsMsg:
+		m.allLogins = msg.logins
 		return m, nil
 
 	case hallSendMsg:
@@ -1036,9 +1067,14 @@ func formatChatTime(t time.Time) string {
 }
 
 // knownLogins returns a deduplicated, sorted list of logins from
-// both presenceLogins and message senders.
+// all registered users, presence, and message senders.
 func (m hallModel) knownLogins() []string {
 	seen := make(map[string]bool)
+	for _, l := range m.allLogins {
+		if l != "" && l != m.myLogin {
+			seen[l] = true
+		}
+	}
 	for _, l := range m.presenceLogins {
 		if l != "" && l != m.myLogin {
 			seen[l] = true
