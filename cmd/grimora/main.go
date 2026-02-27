@@ -325,7 +325,7 @@ func runUpdate() error {
 	latestVersion := strings.TrimPrefix(release.TagName, "v")
 	currentVersion := strings.TrimPrefix(version, "v")
 	if !isNewerVersion(latestVersion, currentVersion) {
-		fmt.Printf("grimora v%s is already the latest\n", currentVersion)
+		printAlreadyCurrent("v" + currentVersion)
 		return nil
 	}
 
@@ -406,7 +406,7 @@ func runUpdate() error {
 		return fmt.Errorf("runUpdate: replace binary: %w", err)
 	}
 
-	fmt.Printf("grimora updated: v%s → v%s\n", currentVersion, latestVersion)
+	printUpdateSuccess("v"+currentVersion, "v"+latestVersion)
 	return nil
 }
 
