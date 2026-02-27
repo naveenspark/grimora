@@ -99,7 +99,7 @@ func run() error {
 	// Only force re-login on actual auth failures (401), not transient errors.
 	if _, err := c.GetMe(context.Background()); err != nil {
 		if strings.Contains(err.Error(), "HTTP 401") {
-			fmt.Println("Session expired. Run: grimora login")
+			printGrimoireGreeting()
 			return nil
 		}
 		// Network/server error — launch TUI anyway, it retries internally.
