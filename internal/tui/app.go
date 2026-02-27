@@ -306,47 +306,80 @@ func (a App) View() string {
 		header += "\n"
 	}
 
-	// Tab bar: 1 Hall  2 Grimoire  3 Threads  4 Board  5 You
+	// Tab bar: responsive — full names, abbreviated, or numbers-only based on width.
 	type tabEntry struct {
-		key  string
-		name string
-		v    view
+		key   string
+		name  string
+		short string
+		v     view
 	}
 	tabs := []tabEntry{
-		{"1", "Hall", viewHall},
-		{"2", "Grimoire", viewGrimoire},
-		{"3", "Threads", viewThreads},
-		{"4", "Board", viewBoard},
-		{"5", "You", viewYou},
+		{"1", "Hall", "Hal", viewHall},
+		{"2", "Grimoire", "Grm", viewGrimoire},
+		{"3", "Threads", "Thr", viewThreads},
+		{"4", "Board", "Brd", viewBoard},
+		{"5", "You", "You", viewYou},
 	}
 
-	// Tab bar: equal-width columns spread across terminal
-	colWidth := a.width / len(tabs)
-	var tabBar strings.Builder
+	// Measure which name set fits.
+	const tabGap = 3 // spaces between tabs
+	fullWidth := 0
+	shortWidth := 0
+	for i, t := range tabs {
+		fullWidth += 1 + 1 + len(t.name) // "1 Hall"
+		shortWidth += 1 + 1 + len(t.short)
+		if i < len(tabs)-1 {
+			fullWidth += tabGap
+			shortWidth += tabGap
+		}
+	}
+	// Add room for presence badge estimate ("●N" = 2-3 chars).
+	if a.hall.presenceCount > 0 {
+		fullWidth += 3
+		shortWidth += 3
+	}
+
+	useShort := fullWidth > a.width
+	numbersOnly := shortWidth > a.width
+
+	var tabParts []string
 	for _, t := range tabs {
 		var label string
-		if t.v == a.view {
-			label = accentStyle.Render(t.key) + " " + selectedStyle.Underline(true).Render(t.name)
+		if numbersOnly {
+			if t.v == a.view {
+				label = accentStyle.Render(t.key)
+			} else {
+				label = metaStyle.Render(t.key)
+			}
 		} else {
-			label = metaStyle.Render(t.key) + " " + dimStyle.Render(t.name)
+			name := t.name
+			if useShort {
+				name = t.short
+			}
+			if t.v == a.view {
+				label = accentStyle.Render(t.key) + " " + selectedStyle.Underline(true).Render(name)
+			} else {
+				label = metaStyle.Render(t.key) + " " + dimStyle.Render(name)
+			}
 		}
 		// Hall tab: presence badge
 		if t.v == viewHall && a.hall.presenceCount > 0 {
 			label += " " + presenceDotStyle.Render("●") + dimStyle.Render(fmt.Sprintf("%d", a.hall.presenceCount))
 		}
-		// Center label within its column
-		labelWidth := lipgloss.Width(label)
-		leftPad := (colWidth - labelWidth) / 2
-		if leftPad < 0 {
-			leftPad = 0
-		}
-		rightPad := colWidth - labelWidth - leftPad
-		if rightPad < 0 {
-			rightPad = 0
-		}
-		tabBar.WriteString(strings.Repeat(" ", leftPad) + label + strings.Repeat(" ", rightPad))
+		tabParts = append(tabParts, label)
 	}
-	centeredTabs := tabBar.String()
+
+	gap := strings.Repeat(" ", tabGap)
+	if numbersOnly {
+		gap = "  "
+	}
+	tabStr := strings.Join(tabParts, gap)
+	tabVisualWidth := lipgloss.Width(tabStr)
+	leftPad := (a.width - tabVisualWidth) / 2
+	if leftPad < 0 {
+		leftPad = 0
+	}
+	centeredTabs := strings.Repeat(" ", leftPad) + tabStr
 
 	// Body
 	var body string
