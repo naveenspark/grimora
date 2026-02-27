@@ -221,7 +221,7 @@ func (m hallModel) Update(msg tea.Msg) (hallModel, tea.Cmd) {
 		m.err = ""
 		m.connected = true
 
-		// Merge new messages (server returns newest-last; de-duplicate by ID).
+		// Merge new messages (de-duplicate by ID, then sort by time).
 		for _, raw := range msg.messages {
 			id := raw.ID.String()
 			if m.seenIDs[id] {
@@ -259,6 +259,11 @@ func (m hallModel) Update(msg tea.Msg) (hallModel, tea.Cmd) {
 
 			m.messages = append(m.messages, cm)
 		}
+
+		// Sort chronologically — oldest first, newest at bottom near input.
+		sort.Slice(m.messages, func(i, j int) bool {
+			return m.messages[i].CreatedAt.Before(m.messages[j].CreatedAt)
+		})
 
 		// Keep the slice bounded to the most recent 200 messages.
 		if len(m.messages) > 200 {
