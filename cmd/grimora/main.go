@@ -17,6 +17,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -87,6 +88,11 @@ func run() error {
 			return runLogout()
 		case "update":
 			return runUpdate()
+		case "--update-done":
+			if len(os.Args) >= 4 {
+				printUpdateSuccess(os.Args[2], os.Args[3])
+			}
+			return nil
 		}
 	}
 
@@ -406,7 +412,13 @@ func runUpdate() error {
 		return fmt.Errorf("runUpdate: replace binary: %w", err)
 	}
 
-	printUpdateSuccess("v"+currentVersion, "v"+latestVersion)
+	// Re-exec into the NEW binary so its updated code renders the success message.
+	// The running process still has the old code in memory after os.Rename.
+	execErr := syscall.Exec(execPath, []string{"grimora", "--update-done", "v" + currentVersion, "v" + latestVersion}, os.Environ())
+	if execErr != nil {
+		// Fallback if exec fails (e.g., Windows).
+		printUpdateSuccess("v"+currentVersion, "v"+latestVersion)
+	}
 	return nil
 }
 
