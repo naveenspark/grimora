@@ -675,13 +675,9 @@ func (m hallModel) View() string {
 		b.WriteString(m.renderProjectPopup())
 	}
 
-	// --- Presence line (username + online count) ---
+	// --- Presence line (username only; online count is in the tab bar) ---
 	if m.myLogin != "" {
-		presenceLine := " " + dimStyle.Render(m.myLogin)
-		if m.presenceCount > 0 {
-			presenceLine += " " + presenceDotStyle.Render("●") + dimStyle.Render(fmt.Sprintf("%d here", m.presenceCount))
-		}
-		b.WriteString(presenceLine + "\n")
+		b.WriteString(" " + dimStyle.Render(m.myLogin) + "\n")
 	}
 
 	// --- Input line ---

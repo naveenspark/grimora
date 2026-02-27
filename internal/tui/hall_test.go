@@ -451,9 +451,6 @@ func TestHallPresenceLineShown(t *testing.T) {
 	if !strings.Contains(view, "naveenspark") {
 		t.Error("expected username 'naveenspark' in view")
 	}
-	if !strings.Contains(view, "7 here") {
-		t.Error("expected '7 here' presence count in view")
-	}
 }
 
 // testErr is a simple error type for tests.
