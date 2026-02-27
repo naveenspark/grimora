@@ -497,9 +497,11 @@ func (m hallModel) updateNav(msg tea.KeyMsg) (hallModel, tea.Cmd) {
 func (m hallModel) View() string {
 	var b strings.Builder
 
-	// Reserve lines: 1 input + (0 or 1 status) + autocomplete.
-	// Tab bar already shows "Hall ●N" — no redundant header needed.
+	// Reserve lines: input(1) + presence(1 if logged in) + status(0-1) + autocomplete.
 	chrome := 1 // input
+	if m.myLogin != "" {
+		chrome++ // presence line
+	}
 	if m.status != "" {
 		chrome++
 	}
@@ -519,13 +521,13 @@ func (m hallModel) View() string {
 
 	// --- Message area ---
 	if m.err != "" && len(m.messages) == 0 {
-		padLines(viewportHeight, &b)
+		padLines(viewportHeight-1, &b)
 		b.WriteString(" " + dimStyle.Render("could not connect · check your connection or run: grimora login") + "\n")
 	} else if m.myLogin == "" && !m.connected {
-		padLines(viewportHeight, &b)
+		padLines(viewportHeight-1, &b)
 		b.WriteString(" " + dimStyle.Render("connecting...") + "\n")
 	} else if len(m.messages) == 0 && m.err == "" {
-		padLines(viewportHeight, &b)
+		padLines(viewportHeight-1, &b)
 		b.WriteString(" " + dimStyle.Render("no messages yet") + "\n")
 	} else {
 		b.WriteString(m.renderMessages(viewportHeight))
@@ -539,6 +541,15 @@ func (m hallModel) View() string {
 	// --- Mention autocomplete popup ---
 	if m.mentionActive && len(m.mentionMatches) > 0 {
 		b.WriteString(m.renderMentionPopup())
+	}
+
+	// --- Presence line (username + online count) ---
+	if m.myLogin != "" {
+		presenceLine := " " + dimStyle.Render(m.myLogin)
+		if m.presenceCount > 0 {
+			presenceLine += " " + presenceDotStyle.Render("●") + dimStyle.Render(fmt.Sprintf("%d here", m.presenceCount))
+		}
+		b.WriteString(presenceLine + "\n")
 	}
 
 	// --- Input line ---

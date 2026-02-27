@@ -1,8 +1,10 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/google/uuid"
@@ -263,6 +265,83 @@ func TestAppQNotFiredWhenEditing(t *testing.T) {
 	_ = cmd
 	if a.grimoire.search != "q" {
 		t.Errorf("expected grimoire.search to be 'q', got %q", a.grimoire.search)
+	}
+}
+
+func TestAppHallLayoutFitsTerminal(t *testing.T) {
+	termHeight := 30
+	a := newTestApp()
+	model, _ := a.Update(tea.WindowSizeMsg{Width: 80, Height: termHeight})
+	a = model.(App)
+
+	// Simulate logged-in user with messages
+	a.me = &domain.Magician{
+		ID:          uuid.New(),
+		GitHubLogin: "naveenspark",
+		GuildID:     "cipher",
+		CardNumber:  42,
+	}
+	a.hall.myLogin = "naveenspark"
+	a.hall.connected = true
+	a.hall.presenceCount = 3
+	a.hall.cursorOn = true
+
+	for i := 0; i < 5; i++ {
+		id := fmt.Sprintf("msg-%d", i)
+		a.hall.messages = append(a.hall.messages, chatMessage{
+			ID: id, SenderLogin: "alice", Body: fmt.Sprintf("Message %d", i),
+			Kind: "message", CreatedAt: time.Now(),
+		})
+		a.hall.seenIDs[id] = true
+	}
+
+	view := a.View()
+	lines := strings.Split(view, "\n")
+	// View may end with trailing \n → last element is ""
+	if len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+
+	if len(lines) != termHeight {
+		t.Errorf("App.View() has %d lines, want %d (terminal height)", len(lines), termHeight)
+		for i, line := range lines {
+			t.Logf("  %2d: %q", i, line)
+		}
+	}
+
+	// Cursor must be visible
+	if !strings.Contains(view, "█") {
+		t.Error("expected cursor '█' in full app view")
+	}
+
+	// Username must appear (presence line OR stats line)
+	if !strings.Contains(view, "naveenspark") {
+		t.Error("expected username 'naveenspark' in full app view")
+	}
+}
+
+func TestAppHallLayoutConnectingState(t *testing.T) {
+	termHeight := 30
+	a := newTestApp()
+	model, _ := a.Update(tea.WindowSizeMsg{Width: 80, Height: termHeight})
+	a = model.(App)
+	a.hall.cursorOn = true
+
+	view := a.View()
+	lines := strings.Split(view, "\n")
+	if len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+
+	if len(lines) != termHeight {
+		t.Errorf("App.View() connecting state has %d lines, want %d", len(lines), termHeight)
+		for i, line := range lines {
+			t.Logf("  %2d: %q", i, line)
+		}
+	}
+
+	if !strings.Contains(view, "connecting") {
+		t.Error("expected 'connecting' text in app view")
 	}
 }
 

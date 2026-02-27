@@ -95,8 +95,8 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		a.width = msg.Width
 		a.height = msg.Height
-		// Chrome: header(2) + tabs(1) + input(1) + help(1) = 5 lines
-		bodyHeight := msg.Height - 5
+		// Chrome: header(2) + tabs(1) + help(1) = 4 lines
+		bodyHeight := msg.Height - 4
 		bodyMsg := tea.WindowSizeMsg{Width: msg.Width, Height: bodyHeight}
 		a.hall, _ = a.hall.Update(bodyMsg)
 		a.grimoire, _ = a.grimoire.Update(bodyMsg)
@@ -105,6 +105,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.you, _ = a.you.Update(bodyMsg)
 		a.peek, _ = a.peek.Update(bodyMsg)
 		a.create, _ = a.create.Update(bodyMsg)
+		return a, nil
 
 	case shimmerTickMsg:
 		a.frame++
@@ -392,15 +393,9 @@ func (a App) View() string {
 		help = " " + helpEntry("j/k", "nav") + "  " + helpEntry("enter", "open") + "  " + helpEntry("esc", "close")
 	}
 
-	// No persistent input bar (Home tab removed)
-	inputBar := ""
-	if a.peekOpen {
-		inputBar = ""
-	}
-
-	// Chrome budget: header(2) + tabs(1) + input(1) + help(1) = 5 lines + body
-	chrome := 5
+	// Chrome budget: header(2) + tabs(1) + help(1) = 4 lines + body
+	chrome := 4
 	body = strings.TrimRight(truncateToHeight(body, a.height-chrome), "\n")
 
-	return fmt.Sprintf("%s\n%s\n%s\n%s\n%s", header, centeredTabs, body, inputBar, help)
+	return fmt.Sprintf("%s\n%s\n%s\n%s", header, centeredTabs, body, help)
 }

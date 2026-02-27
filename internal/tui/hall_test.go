@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -287,6 +288,129 @@ func TestHallReactionDisplay(t *testing.T) {
 	}
 	if !strings.Contains(view, "3") {
 		t.Errorf("expected count '3' in view, got:\n%s", view)
+	}
+}
+
+// --- Layout verification tests ---
+// These tests verify line counts so the TUI never clips the input/cursor.
+
+func TestHallViewLineCount(t *testing.T) {
+	tests := []struct {
+		name    string
+		setup   func(m *hallModel)
+		wantLen int // expected number of newlines in View() output = m.height
+	}{
+		{
+			name: "connecting state (not logged in)",
+			setup: func(m *hallModel) {
+				// fresh model, myLogin="" → no presence line, chrome=1
+			},
+			wantLen: 24, // m.height
+		},
+		{
+			name: "empty with login",
+			setup: func(m *hallModel) {
+				m.myLogin = "naveenspark"
+				m.connected = true
+				m.presenceCount = 3
+				// no messages → "no messages yet"
+				m.Update(hallMessagesMsg{messages: nil}) //nolint:errcheck
+			},
+			wantLen: 24,
+		},
+		{
+			name: "error state",
+			setup: func(m *hallModel) {
+				m.Update(hallMessagesMsg{err: &testErr{msg: "timeout"}}) //nolint:errcheck
+			},
+			wantLen: 24,
+		},
+		{
+			name: "with messages and login",
+			setup: func(m *hallModel) {
+				m.myLogin = "naveenspark"
+				m.connected = true
+				m.presenceCount = 5
+				for i := 0; i < 10; i++ {
+					id := fmt.Sprintf("msg-%d", i)
+					m.seenIDs[id] = true
+					m.messages = append(m.messages, chatMessage{
+						ID:          id,
+						SenderLogin: "alice",
+						Body:        fmt.Sprintf("Message %d", i),
+						Kind:        "message",
+						CreatedAt:   time.Now().Add(time.Duration(i) * time.Minute),
+					})
+				}
+			},
+			wantLen: 24,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			m := newTestHallModel()
+			tc.setup(&m)
+
+			view := m.View()
+			// Count newlines — each line in View() is \n-terminated
+			newlines := strings.Count(view, "\n")
+			if newlines != tc.wantLen {
+				t.Errorf("View() has %d newlines, want %d", newlines, tc.wantLen)
+				lines := strings.Split(view, "\n")
+				for i, line := range lines {
+					t.Logf("  %2d: %q", i, line)
+				}
+			}
+		})
+	}
+}
+
+func TestHallCursorVisibleWhenFocused(t *testing.T) {
+	m := newTestHallModel()
+	m.myLogin = "naveenspark"
+	m.connected = true
+	m.cursorOn = true // ensure cursor is in visible phase
+	m.presenceCount = 2
+
+	// Add a few messages
+	for i := 0; i < 3; i++ {
+		id := fmt.Sprintf("msg-%d", i)
+		m.seenIDs[id] = true
+		m.messages = append(m.messages, chatMessage{
+			ID: id, SenderLogin: "alice", Body: "hello",
+			Kind: "message", CreatedAt: time.Now(),
+		})
+	}
+
+	view := m.View()
+	if !strings.Contains(view, "█") {
+		t.Error("expected cursor block '█' in view when inputFocused=true and cursorOn=true")
+		lines := strings.Split(view, "\n")
+		for i, line := range lines {
+			t.Logf("  %2d: %q", i, line)
+		}
+	}
+}
+
+func TestHallPresenceLineShown(t *testing.T) {
+	m := newTestHallModel()
+	m.myLogin = "naveenspark"
+	m.connected = true
+	m.presenceCount = 7
+
+	m.messages = append(m.messages, chatMessage{
+		ID: "msg-1", SenderLogin: "alice", Body: "hi",
+		Kind: "message", CreatedAt: time.Now(),
+	})
+	m.seenIDs["msg-1"] = true
+
+	view := m.View()
+	if !strings.Contains(view, "naveenspark") {
+		t.Error("expected username 'naveenspark' in view")
+	}
+	if !strings.Contains(view, "7 here") {
+		t.Error("expected '7 here' presence count in view")
 	}
 }
 
