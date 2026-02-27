@@ -13,7 +13,7 @@ import (
 )
 
 func newTestApp() App {
-	a := NewApp(nil)
+	a := NewApp(nil, "dev")
 	a.width = 80
 	a.height = 30
 	return a

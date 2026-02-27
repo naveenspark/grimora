@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -85,7 +86,9 @@ func (m createModel) updateKeys(msg tea.KeyMsg) (createModel, tea.Cmd) {
 		*f = editRune(*f, "backspace")
 	case "enter":
 		if m.focus == fieldText {
-			m.fields[fieldText] += "\n"
+			if utf8.RuneCountInString(m.fields[fieldText]) < maxInputLen {
+				m.fields[fieldText] += "\n"
+			}
 		} else {
 			m.focus = (m.focus + 1) % numFields
 		}
@@ -113,7 +116,7 @@ func (m createModel) updateKeys(msg tea.KeyMsg) (createModel, tea.Cmd) {
 			}
 		}
 		if len(key) == 1 {
-			m.fields[m.focus] += key
+			m.fields[m.focus] = editRune(m.fields[m.focus], key)
 		}
 	}
 	return m, nil

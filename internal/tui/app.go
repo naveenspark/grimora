@@ -36,43 +36,50 @@ type showPeekMsg struct {
 	login string
 }
 
+// appChromeLines is the number of lines used by header(2) + tabs(1) + help(1).
+const appChromeLines = 4
+
 // App is the root Bubbletea model.
 type App struct {
-	client     *client.Client
-	view       view
-	hall       hallModel
-	grimoire   grimoireModel
-	threads    threadsModel
-	board      boardModel
-	you        youModel
-	create     createModel
-	peek       peekModel
-	peekOpen   bool
-	helpOpen   bool
-	helpCursor int
-	me         *domain.Magician
-	stats      *domain.ForgeStats
-	width      int
-	height     int
-	frame      int // logo shimmer animation frame
+	client          *client.Client
+	view            view
+	hall            hallModel
+	grimoire        grimoireModel
+	threads         threadsModel
+	board           boardModel
+	you             youModel
+	create          createModel
+	peek            peekModel
+	peekOpen        bool
+	helpOpen        bool
+	helpCursor      int
+	me              *domain.Magician
+	stats           *domain.ForgeStats
+	width           int
+	height          int
+	frame           int // logo shimmer animation frame
+	currentVersion  string
+	latestVersion   string
+	updateAvailable bool
 }
 
 // NewApp creates a new TUI application.
-func NewApp(c *client.Client) App {
+func NewApp(c *client.Client, version string) App {
 	return App{
-		client:   c,
-		hall:     newHallModel(c),
-		grimoire: newGrimoireModel(c),
-		threads:  newThreadsModel(c),
-		board:    newBoardModel(c),
-		you:      newYouModel(c),
-		create:   newCreateModel(c),
-		peek:     newPeekModel(c),
+		client:         c,
+		currentVersion: version,
+		hall:           newHallModel(c),
+		grimoire:       newGrimoireModel(c),
+		threads:        newThreadsModel(c),
+		board:          newBoardModel(c),
+		you:            newYouModel(c),
+		create:         newCreateModel(c),
+		peek:           newPeekModel(c),
 	}
 }
 
 func (a App) Init() tea.Cmd {
-	return tea.Batch(a.hall.Init(), shimmerTickCmd(), a.loadMe())
+	return tea.Batch(a.hall.Init(), shimmerTickCmd(), a.loadMe(), checkVersion(a.currentVersion))
 }
 
 func (a App) loadMe() tea.Cmd {
@@ -95,8 +102,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		a.width = msg.Width
 		a.height = msg.Height
-		// Chrome: header(2) + tabs(1) + help(1) = 4 lines
-		bodyHeight := msg.Height - 4
+		bodyHeight := msg.Height - appChromeLines
 		bodyMsg := tea.WindowSizeMsg{Width: msg.Width, Height: bodyHeight}
 		a.hall, _ = a.hall.Update(bodyMsg)
 		a.grimoire, _ = a.grimoire.Update(bodyMsg)
@@ -110,6 +116,13 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case shimmerTickMsg:
 		a.frame++
 		return a, shimmerTickCmd()
+
+	case versionCheckMsg:
+		if msg.hasUpdate {
+			a.latestVersion = msg.latestVersion
+			a.updateAvailable = true
+		}
+		return a, nil
 
 	case meLoadedMsg:
 		if msg.err == nil && msg.me != nil {
@@ -295,13 +308,49 @@ func (a App) View() string {
 	}
 	header := strings.Repeat(" ", logoPad) + logo
 
-	if statsLine != "" {
+	// Build optional update notice
+	updateNotice := ""
+	if a.updateAvailable {
+		updateNotice = dimStyle.Render("↑ " + a.latestVersion + " avail · grimora update")
+	}
+
+	if statsLine != "" && updateNotice != "" {
+		statsW := lipgloss.Width(statsLine)
+		noticeW := lipgloss.Width(updateNotice)
+		if statsW+noticeW+2 <= a.width {
+			// Both fit: center stats, right-align notice
+			rightPad := a.width - statsW - noticeW
+			statsPad := rightPad / 2
+			if statsPad < 0 {
+				statsPad = 0
+			}
+			gap := rightPad - statsPad
+			if gap < 0 {
+				gap = 0
+			}
+			header += "\n" + strings.Repeat(" ", statsPad) + statsLine + strings.Repeat(" ", gap) + updateNotice
+		} else {
+			// Narrow terminal: just show stats centered
+			statsPad := (a.width - statsW) / 2
+			if statsPad < 0 {
+				statsPad = 0
+			}
+			header += "\n" + strings.Repeat(" ", statsPad) + statsLine
+		}
+	} else if statsLine != "" {
 		statsWidth := lipgloss.Width(statsLine)
 		statsPad := (a.width - statsWidth) / 2
 		if statsPad < 0 {
 			statsPad = 0
 		}
 		header += "\n" + strings.Repeat(" ", statsPad) + statsLine
+	} else if updateNotice != "" {
+		noticeW := lipgloss.Width(updateNotice)
+		pad := a.width - noticeW
+		if pad < 0 {
+			pad = 0
+		}
+		header += "\n" + strings.Repeat(" ", pad) + updateNotice
 	} else {
 		header += "\n"
 	}
@@ -431,8 +480,7 @@ func (a App) View() string {
 		help = truncateHelpBar(help, a.width)
 	}
 
-	// Chrome budget: header(2) + tabs(1) + help(1) = 4 lines + body
-	chrome := 4
+	chrome := appChromeLines
 	body = strings.TrimRight(truncateToHeight(body, a.height-chrome), "\n")
 
 	return fmt.Sprintf("%s\n%s\n%s\n%s", header, centeredTabs, body, help)

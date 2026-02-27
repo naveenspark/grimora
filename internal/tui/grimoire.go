@@ -121,7 +121,7 @@ func (m grimoireModel) Update(msg tea.Msg) (grimoireModel, tea.Cmd) {
 
 	case upvoteResultMsg:
 		if msg.err != nil {
-			if strings.Contains(msg.err.Error(), "not authenticated") {
+			if client.IsStatus(msg.err, 401) {
 				m.statusMsg = "not authenticated -- run: grimora login"
 			} else {
 				m.statusMsg = fmt.Sprintf("upvote failed: %v", msg.err)
@@ -133,7 +133,7 @@ func (m grimoireModel) Update(msg tea.Msg) (grimoireModel, tea.Cmd) {
 
 	case saveWeaponResultMsg:
 		if msg.err != nil {
-			if strings.Contains(msg.err.Error(), "not authenticated") {
+			if client.IsStatus(msg.err, 401) {
 				m.statusMsg = "not authenticated -- run: grimora login"
 			} else {
 				m.statusMsg = fmt.Sprintf("save failed: %v", msg.err)
@@ -335,10 +335,11 @@ func (m grimoireModel) listLen() int {
 	return len(m.spells)
 }
 
-// displayTags is the curated set shown in the inline tag bar (matches mockup).
+// displayTags is the curated set shown in the inline tag bar.
+// Values must exist in domain.ValidTags.
 var displayTags = []string{
-	"debugging", "database", "performance", "architecture",
-	"ai-prompts", "testing", "code-review", "security", "observability",
+	"debugging", "data", "performance", "architecture",
+	"system-prompt", "testing", "refactoring", "security", "devops",
 }
 
 func (m grimoireModel) View() string {
@@ -441,6 +442,12 @@ func (m grimoireModel) View() string {
 	return b.String() + m.viewSpellList()
 }
 
+// grimoireChromeLines accounts for editorial + search/mode + tag bar + separator + detail chrome.
+const grimoireChromeLines = 10
+
+// grimoireWeaponChromeLines is the same but without the tag bar (weapons don't have tags).
+const grimoireWeaponChromeLines = 9
+
 func (m grimoireModel) viewSpellList() string {
 	if len(m.spells) == 0 {
 		return " " + dimStyle.Render("no spells found")
@@ -448,7 +455,7 @@ func (m grimoireModel) viewSpellList() string {
 
 	var b strings.Builder
 
-	viewChrome := 10 // editorial + search/mode + tag bar + separator + detail chrome
+	viewChrome := grimoireChromeLines
 	available := m.height - viewChrome
 	if available < 6 {
 		available = 6
@@ -585,7 +592,7 @@ func (m grimoireModel) viewWeaponList() string {
 
 	var b strings.Builder
 
-	viewChrome := 9 // editorial + search/mode + separator + detail chrome
+	viewChrome := grimoireWeaponChromeLines
 	available := m.height - viewChrome
 	if available < 6 {
 		available = 6

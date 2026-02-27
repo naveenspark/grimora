@@ -130,6 +130,35 @@ func TestEditRuneBackspaceEmoji(t *testing.T) {
 	}
 }
 
+func TestEditRuneMaxInputLen(t *testing.T) {
+	atLimit := strings.Repeat("a", maxInputLen)         // 2000 ASCII runes
+	belowLimit := strings.Repeat("a", maxInputLen-1)    // 1999 ASCII runes
+	cjkAtLimit := strings.Repeat("\u4f60", maxInputLen) // 2000 CJK runes (6000 bytes)
+
+	tests := []struct {
+		name string
+		text string
+		key  string
+		want string
+	}{
+		{"at limit rejects new char", atLimit, "b", atLimit},
+		{"below limit accepts new char", belowLimit, "b", belowLimit + "b"},
+		{"at limit backspace still works", atLimit, "backspace", atLimit[:len(atLimit)-1]},
+		{"at limit non-printable ignored", atLimit, "enter", atLimit},
+		{"CJK at limit rejects new rune", cjkAtLimit, "\u597d", cjkAtLimit},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := editRune(tt.text, tt.key)
+			if got != tt.want {
+				t.Errorf("editRune(..., %q): len(got)=%d runes, len(want)=%d runes, changed=%v",
+					tt.key, len([]rune(got)), len([]rune(tt.want)), got != tt.text)
+			}
+		})
+	}
+}
+
 func TestTruncateToHeightLimitsLines(t *testing.T) {
 	input := "line1\nline2\nline3\nline4\nline5\n"
 	result := truncateToHeight(input, 3)

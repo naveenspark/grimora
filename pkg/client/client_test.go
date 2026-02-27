@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -149,6 +150,32 @@ func TestHTTPError(t *testing.T) {
 	}
 	if got := err.Error(); !strings.Contains(got, "boom") {
 		t.Errorf("error = %q, want it to contain 'boom'", got)
+	}
+}
+
+func TestIsStatus(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		code int
+		want bool
+	}{
+		{"matching status", &HTTPError{StatusCode: 404, Message: "not found"}, 404, true},
+		{"non-matching status", &HTTPError{StatusCode: 500, Message: "boom"}, 404, false},
+		{"wrapped matching", fmt.Errorf("outer: %w", &HTTPError{StatusCode: 401, Message: "unauthorized"}), 401, true},
+		{"wrapped non-matching", fmt.Errorf("outer: %w", &HTTPError{StatusCode: 403, Message: "forbidden"}), 401, false},
+		{"double-wrapped matching", fmt.Errorf("outer: %w", fmt.Errorf("inner: %w", &HTTPError{StatusCode: 429, Message: "rate limited"})), 429, true},
+		{"non-HTTPError", fmt.Errorf("plain error"), 500, false},
+		{"nil error", nil, 500, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := IsStatus(tt.err, tt.code)
+			if got != tt.want {
+				t.Errorf("IsStatus(%v, %d) = %v, want %v", tt.err, tt.code, got, tt.want)
+			}
+		})
 	}
 }
 

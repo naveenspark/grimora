@@ -103,7 +103,7 @@ func (c *Client) SearchSpells(ctx context.Context, query string) ([]domain.Spell
 // GetSpell fetches a single spell by ID.
 func (c *Client) GetSpell(ctx context.Context, id string) (*domain.Spell, error) {
 	var spell domain.Spell
-	if err := c.get(ctx, "/api/spells/"+id, &spell); err != nil {
+	if err := c.get(ctx, "/api/spells/"+url.PathEscape(id), &spell); err != nil {
 		return nil, fmt.Errorf("client.GetSpell: %w", err)
 	}
 	return &spell, nil
@@ -120,7 +120,7 @@ func (c *Client) CreateSpell(ctx context.Context, spell CreateSpellRequest) (*do
 
 // UpvoteSpell upvotes a spell by ID.
 func (c *Client) UpvoteSpell(ctx context.Context, id string) error {
-	if err := c.doRequest(ctx, http.MethodPost, "/api/spells/"+id+"/upvote", nil, nil); err != nil {
+	if err := c.doRequest(ctx, http.MethodPost, "/api/spells/"+url.PathEscape(id)+"/upvote", nil, nil); err != nil {
 		return fmt.Errorf("client.UpvoteSpell: %w", err)
 	}
 	return nil
@@ -128,7 +128,7 @@ func (c *Client) UpvoteSpell(ctx context.Context, id string) error {
 
 // RemoveUpvote removes an upvote from a spell.
 func (c *Client) RemoveUpvote(ctx context.Context, id string) error {
-	if err := c.doRequest(ctx, http.MethodDelete, "/api/spells/"+id+"/upvote", nil, nil); err != nil {
+	if err := c.doRequest(ctx, http.MethodDelete, "/api/spells/"+url.PathEscape(id)+"/upvote", nil, nil); err != nil {
 		return fmt.Errorf("client.RemoveUpvote: %w", err)
 	}
 	return nil
@@ -175,7 +175,7 @@ func (c *Client) SearchWeapons(ctx context.Context, query string) ([]domain.Weap
 // GetWeapon fetches a single weapon by ID.
 func (c *Client) GetWeapon(ctx context.Context, id string) (*domain.Weapon, error) {
 	var weapon domain.Weapon
-	if err := c.get(ctx, "/api/weapons/"+id, &weapon); err != nil {
+	if err := c.get(ctx, "/api/weapons/"+url.PathEscape(id), &weapon); err != nil {
 		return nil, fmt.Errorf("client.GetWeapon: %w", err)
 	}
 	return &weapon, nil
@@ -192,7 +192,7 @@ func (c *Client) CreateWeapon(ctx context.Context, w CreateWeaponRequest) (*doma
 
 // SaveWeapon saves a weapon by ID.
 func (c *Client) SaveWeapon(ctx context.Context, id string) error {
-	if err := c.doRequest(ctx, http.MethodPost, "/api/weapons/"+id+"/save", nil, nil); err != nil {
+	if err := c.doRequest(ctx, http.MethodPost, "/api/weapons/"+url.PathEscape(id)+"/save", nil, nil); err != nil {
 		return fmt.Errorf("client.SaveWeapon: %w", err)
 	}
 	return nil
@@ -200,7 +200,7 @@ func (c *Client) SaveWeapon(ctx context.Context, id string) error {
 
 // RemoveWeaponSave removes a weapon save.
 func (c *Client) RemoveWeaponSave(ctx context.Context, id string) error {
-	if err := c.doRequest(ctx, http.MethodDelete, "/api/weapons/"+id+"/save", nil, nil); err != nil {
+	if err := c.doRequest(ctx, http.MethodDelete, "/api/weapons/"+url.PathEscape(id)+"/save", nil, nil); err != nil {
 		return fmt.Errorf("client.RemoveWeaponSave: %w", err)
 	}
 	return nil
@@ -240,7 +240,7 @@ func (c *Client) ListMagicians(ctx context.Context, limit, offset int) ([]domain
 
 // Follow follows a magician by login.
 func (c *Client) Follow(ctx context.Context, login string) error {
-	if err := c.doRequest(ctx, http.MethodPost, "/api/magicians/"+login+"/follow", nil, nil); err != nil {
+	if err := c.doRequest(ctx, http.MethodPost, "/api/magicians/"+url.PathEscape(login)+"/follow", nil, nil); err != nil {
 		return fmt.Errorf("client.Follow: %w", err)
 	}
 	return nil
@@ -248,7 +248,7 @@ func (c *Client) Follow(ctx context.Context, login string) error {
 
 // Unfollow unfollows a magician by login.
 func (c *Client) Unfollow(ctx context.Context, login string) error {
-	if err := c.doRequest(ctx, http.MethodDelete, "/api/magicians/"+login+"/follow", nil, nil); err != nil {
+	if err := c.doRequest(ctx, http.MethodDelete, "/api/magicians/"+url.PathEscape(login)+"/follow", nil, nil); err != nil {
 		return fmt.Errorf("client.Unfollow: %w", err)
 	}
 	return nil
@@ -281,7 +281,7 @@ func (c *Client) GetMessages(ctx context.Context, threadID string, limit, offset
 	params.Set("offset", strconv.Itoa(offset))
 
 	var msgs []domain.Message
-	if err := c.get(ctx, "/api/threads/"+threadID+"/messages?"+params.Encode(), &msgs); err != nil {
+	if err := c.get(ctx, "/api/threads/"+url.PathEscape(threadID)+"/messages?"+params.Encode(), &msgs); err != nil {
 		return nil, fmt.Errorf("client.GetMessages: %w", err)
 	}
 	return msgs, nil
@@ -290,7 +290,7 @@ func (c *Client) GetMessages(ctx context.Context, threadID string, limit, offset
 // SendMessage sends a message to a thread.
 func (c *Client) SendMessage(ctx context.Context, threadID, body string) (*domain.Message, error) {
 	var msg domain.Message
-	if err := c.post(ctx, "/api/threads/"+threadID+"/messages", map[string]string{"body": body}, &msg); err != nil {
+	if err := c.post(ctx, "/api/threads/"+url.PathEscape(threadID)+"/messages", map[string]string{"body": body}, &msg); err != nil {
 		return nil, fmt.Errorf("client.SendMessage: %w", err)
 	}
 	return &msg, nil
@@ -329,7 +329,7 @@ func (c *Client) CreateWorkshopProject(ctx context.Context, name, insight string
 
 // UpdateWorkshopProject updates a workshop project.
 func (c *Client) UpdateWorkshopProject(ctx context.Context, id, name, insight string) error {
-	if err := c.doRequest(ctx, http.MethodPut, "/api/workshop/"+id, map[string]string{"name": name, "insight": insight}, nil); err != nil {
+	if err := c.doRequest(ctx, http.MethodPut, "/api/workshop/"+url.PathEscape(id), map[string]string{"name": name, "insight": insight}, nil); err != nil {
 		return fmt.Errorf("client.UpdateWorkshopProject: %w", err)
 	}
 	return nil
@@ -337,7 +337,7 @@ func (c *Client) UpdateWorkshopProject(ctx context.Context, id, name, insight st
 
 // DeleteWorkshopProject deletes a workshop project.
 func (c *Client) DeleteWorkshopProject(ctx context.Context, id string) error {
-	if err := c.doRequest(ctx, http.MethodDelete, "/api/workshop/"+id, nil, nil); err != nil {
+	if err := c.doRequest(ctx, http.MethodDelete, "/api/workshop/"+url.PathEscape(id), nil, nil); err != nil {
 		return fmt.Errorf("client.DeleteWorkshopProject: %w", err)
 	}
 	return nil
@@ -365,7 +365,7 @@ func (c *Client) GetLeaderboard(ctx context.Context, guild, city string, limit, 
 // ListProjectUpdates returns timeline entries for a workshop project.
 func (c *Client) ListProjectUpdates(ctx context.Context, projectID string) ([]domain.ProjectUpdate, error) {
 	var updates []domain.ProjectUpdate
-	if err := c.get(ctx, "/api/workshop/"+projectID+"/updates", &updates); err != nil {
+	if err := c.get(ctx, "/api/workshop/"+url.PathEscape(projectID)+"/updates", &updates); err != nil {
 		return nil, fmt.Errorf("client.ListProjectUpdates: %w", err)
 	}
 	return updates, nil
@@ -374,7 +374,7 @@ func (c *Client) ListProjectUpdates(ctx context.Context, projectID string) ([]do
 // GetMagicianWorkshop returns a magician's workshop projects (public view).
 func (c *Client) GetMagicianWorkshop(ctx context.Context, login string) ([]domain.WorkshopProject, error) {
 	var projects []domain.WorkshopProject
-	if err := c.get(ctx, "/api/magicians/"+login+"/workshop", &projects); err != nil {
+	if err := c.get(ctx, "/api/magicians/"+url.PathEscape(login)+"/workshop", &projects); err != nil {
 		return nil, fmt.Errorf("client.GetMagicianWorkshop: %w", err)
 	}
 	return projects, nil
@@ -383,7 +383,7 @@ func (c *Client) GetMagicianWorkshop(ctx context.Context, login string) ([]domai
 // GetMagician fetches a single magician card by login.
 func (c *Client) GetMagician(ctx context.Context, login string) (*domain.MagicianCard, error) {
 	var card domain.MagicianCard
-	if err := c.get(ctx, "/api/magicians/"+login, &card); err != nil {
+	if err := c.get(ctx, "/api/magicians/"+url.PathEscape(login), &card); err != nil {
 		return nil, fmt.Errorf("client.GetMagician: %w", err)
 	}
 	return &card, nil
@@ -410,7 +410,7 @@ type RoomPresence struct {
 // GetRoomPresence returns the live presence for a room.
 func (c *Client) GetRoomPresence(ctx context.Context, slug string) (*RoomPresence, error) {
 	var p RoomPresence
-	if err := c.get(ctx, "/api/rooms/"+slug+"/presence", &p); err != nil {
+	if err := c.get(ctx, "/api/rooms/"+url.PathEscape(slug)+"/presence", &p); err != nil {
 		return nil, fmt.Errorf("client.GetRoomPresence: %w", err)
 	}
 	return &p, nil
@@ -425,7 +425,7 @@ func (c *Client) GetRoomMessages(ctx context.Context, slug string, before time.T
 	params.Set("limit", strconv.Itoa(limit))
 
 	var msgs []domain.RoomMessage
-	if err := c.get(ctx, "/api/rooms/"+slug+"/messages?"+params.Encode(), &msgs); err != nil {
+	if err := c.get(ctx, "/api/rooms/"+url.PathEscape(slug)+"/messages?"+params.Encode(), &msgs); err != nil {
 		return nil, fmt.Errorf("client.GetRoomMessages: %w", err)
 	}
 	return msgs, nil
@@ -444,7 +444,7 @@ func (c *Client) GetReactionCounts(ctx context.Context, slug string, msgIDs []st
 	}
 	ids := strings.Join(msgIDs, ",")
 	var result map[string][]ReactionCount
-	if err := c.get(ctx, "/api/rooms/"+slug+"/messages/reactions?ids="+ids, &result); err != nil {
+	if err := c.get(ctx, "/api/rooms/"+url.PathEscape(slug)+"/messages/reactions?ids="+url.QueryEscape(ids), &result); err != nil {
 		return nil, fmt.Errorf("client.GetReactionCounts: %w", err)
 	}
 	return result, nil
@@ -453,7 +453,7 @@ func (c *Client) GetReactionCounts(ctx context.Context, slug string, msgIDs []st
 // SendRoomMessage posts a message to a chat room.
 func (c *Client) SendRoomMessage(ctx context.Context, slug, body string) (*domain.RoomMessage, error) {
 	var msg domain.RoomMessage
-	if err := c.post(ctx, "/api/rooms/"+slug+"/messages", map[string]string{"body": body}, &msg); err != nil {
+	if err := c.post(ctx, "/api/rooms/"+url.PathEscape(slug)+"/messages", map[string]string{"body": body}, &msg); err != nil {
 		return nil, fmt.Errorf("client.SendRoomMessage: %w", err)
 	}
 	return &msg, nil
@@ -461,7 +461,7 @@ func (c *Client) SendRoomMessage(ctx context.Context, slug, body string) (*domai
 
 // JoinRoom joins a chat room.
 func (c *Client) JoinRoom(ctx context.Context, slug string) error {
-	if err := c.doRequest(ctx, http.MethodPost, "/api/rooms/"+slug+"/join", nil, nil); err != nil {
+	if err := c.doRequest(ctx, http.MethodPost, "/api/rooms/"+url.PathEscape(slug)+"/join", nil, nil); err != nil {
 		return fmt.Errorf("client.JoinRoom: %w", err)
 	}
 	return nil
@@ -522,17 +522,17 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body any, o
 	defer resp.Body.Close() //nolint:errcheck // best-effort close
 
 	if resp.StatusCode >= 400 {
-		respBody, readErr := io.ReadAll(resp.Body)
+		respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // 1 MB max error body
 		if readErr != nil {
-			return fmt.Errorf("HTTP %d (failed to read body: %w)", resp.StatusCode, readErr)
+			return &HTTPError{StatusCode: resp.StatusCode, Message: fmt.Sprintf("failed to read body: %v", readErr)}
 		}
 		var apiErr struct {
 			Error string `json:"error"`
 		}
 		if json.Unmarshal(respBody, &apiErr) == nil && apiErr.Error != "" {
-			return fmt.Errorf("HTTP %d: %s", resp.StatusCode, apiErr.Error)
+			return &HTTPError{StatusCode: resp.StatusCode, Message: apiErr.Error}
 		}
-		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
+		return &HTTPError{StatusCode: resp.StatusCode, Message: string(respBody)}
 	}
 
 	if out != nil {

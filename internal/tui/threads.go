@@ -115,14 +115,6 @@ func (m threadsModel) sendMessage(body string) tea.Cmd {
 	}
 }
 
-func (m threadsModel) startThread(login string) tea.Cmd {
-	c := m.client
-	return func() tea.Msg {
-		thread, err := c.StartThread(context.Background(), login)
-		return threadsStartedMsg{thread: thread, err: err}
-	}
-}
-
 func (m threadsModel) Update(msg tea.Msg) (threadsModel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -222,13 +214,6 @@ func (m threadsModel) updateList(msg tea.KeyMsg) (threadsModel, tea.Cmd) {
 			m.animFrame = 0
 			m.input = ""
 			return m, tea.Batch(m.loadMessages(), cursorBlinkCmd())
-		}
-	case "s":
-		// Start new thread — for now prompt isn't implemented, use peek logins
-		// TODO: implement login input for new thread
-		if len(m.threads) > 0 && m.cursor < len(m.threads) {
-			login := m.threads[m.cursor].OtherLogin
-			return m, m.startThread(login)
 		}
 	case "p":
 		if len(m.threads) > 0 && m.cursor < len(m.threads) {
@@ -437,24 +422,7 @@ func (m threadsModel) renderThreadMessage(msg domain.Message) string {
 }
 
 func (m threadsModel) renderConvoInput() string {
-	const timeIndent = "           " // 11 spaces — matches " " + 8-char timestamp + "  "
-
-	sep := chatSepStyle.Render(" · ")
-	namePart := renderAnimatedName(m.myLogin, m.animFrame)
-	if !m.inputFocused {
-		if m.input == "" {
-			return timeIndent + namePart + sep + inputPlaceholderStyle.Render("type a message...")
-		}
-		return timeIndent + namePart + sep + dimStyle.Render(m.input)
-	}
-	cursor := " "
-	if (m.animFrame/4)%2 == 0 {
-		cursor = accentStyle.Render("█")
-	}
-	if m.input == "" {
-		return timeIndent + namePart + sep + cursor
-	}
-	return timeIndent + namePart + sep + chatComposingStyle.Render(m.input) + cursor
+	return renderChatInput(m.myLogin, m.input, "type a message...", m.inputFocused, m.animFrame)
 }
 
 func (m threadsModel) helpKeys() string {
@@ -465,6 +433,6 @@ func (m threadsModel) helpKeys() string {
 		}
 		return helpEntry("enter", "type") + "  " + helpEntry("esc", "back")
 	default:
-		return helpEntry("j/k", "nav") + "  " + helpEntry("enter", "open") + "  " + helpEntry("s", "new") + "  " + helpEntry("p", "peek") + "  " + helpEntry("h", "help") + "  " + helpEntry("q", "quit")
+		return helpEntry("j/k", "nav") + "  " + helpEntry("enter", "open") + "  " + helpEntry("p", "peek") + "  " + helpEntry("h", "help") + "  " + helpEntry("q", "quit")
 	}
 }

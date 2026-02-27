@@ -249,12 +249,20 @@ func TestGrimoireInlineTagBarRendered(t *testing.T) {
 	if !strings.Contains(view, "debugging") {
 		t.Errorf("expected 'debugging' in inline tag bar, got:\n%s", view)
 	}
-	if !strings.Contains(view, "database") {
-		t.Errorf("expected 'database' in inline tag bar, got:\n%s", view)
+	if !strings.Contains(view, "data") {
+		t.Errorf("expected 'data' in inline tag bar, got:\n%s", view)
 	}
 	// Tags that don't fit within the width are truncated — only check first few.
 	if !strings.Contains(view, "performance") {
 		t.Errorf("expected 'performance' in inline tag bar, got:\n%s", view)
+	}
+}
+
+func TestDisplayTagsAreAllValid(t *testing.T) {
+	for _, tag := range displayTags {
+		if !domain.ValidTag(tag) {
+			t.Errorf("displayTags contains invalid tag: %q", tag)
+		}
 	}
 }
 

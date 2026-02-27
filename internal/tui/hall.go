@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -446,6 +447,9 @@ func (m hallModel) updateInput(msg tea.KeyMsg) (hallModel, tea.Cmd) {
 		default:
 			// Append character to query
 			if len(key) == 1 {
+				if utf8.RuneCountInString(m.input) >= maxInputLen {
+					return m, nil
+				}
 				m.mentionQuery += key
 				m.input += key
 				m.mentionMatches = m.filterLogins(m.mentionQuery)
@@ -469,7 +473,12 @@ func (m hallModel) updateInput(msg tea.KeyMsg) (hallModel, tea.Cmd) {
 		case "tab", "enter":
 			if len(m.projectMatches) > 0 {
 				selected := m.projectMatches[m.projectCursor]
-				tag := strings.Fields(selected.Name)[0]
+				fields := strings.Fields(selected.Name)
+				if len(fields) == 0 {
+					m.projectActive = false
+					return m, nil
+				}
+				tag := fields[0]
 				m.input = strings.TrimSuffix(m.input, "#"+m.projectQuery) + "#" + tag + " "
 			}
 			m.projectActive = false
@@ -518,6 +527,9 @@ func (m hallModel) updateInput(msg tea.KeyMsg) (hallModel, tea.Cmd) {
 			return m, nil
 		default:
 			if len(key) == 1 {
+				if utf8.RuneCountInString(m.input) >= maxInputLen {
+					return m, nil
+				}
 				m.projectQuery += key
 				m.input += key
 				m.projectMatches = m.filterProjects(m.projectQuery)
@@ -560,6 +572,9 @@ func (m hallModel) updateInput(msg tea.KeyMsg) (hallModel, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case "@":
+		if utf8.RuneCountInString(m.input) >= maxInputLen {
+			return m, nil
+		}
 		m.input += "@"
 		m.mentionActive = true
 		m.mentionQuery = ""
@@ -571,6 +586,9 @@ func (m hallModel) updateInput(msg tea.KeyMsg) (hallModel, tea.Cmd) {
 		return m, nil
 
 	case "#":
+		if utf8.RuneCountInString(m.input) >= maxInputLen {
+			return m, nil
+		}
 		m.input += "#"
 		if len(m.myProjects) > 0 {
 			m.projectActive = true
@@ -885,32 +903,13 @@ func potencyFromStr(s string) int {
 	}
 }
 
-// renderInput renders the text input line aligned with the message name column.
-// The 10-space indent matches the 8-char timestamp field + 2 trailing spaces
-// in renderPlainMessage, so the cursor sits where sent messages appear.
+// renderInput renders the text input line using the shared chat input renderer.
 func (m hallModel) renderInput() string {
-	const timeIndent = "           " // 11 spaces — matches " " + 8-char timestamp + "  "
-
-	sep := chatSepStyle.Render(" · ")
-	namePart := renderAnimatedName(m.myLogin, m.animFrame)
 	placeholder := "say something..."
 	if m.myLogin == "" {
 		placeholder = "grimora login to chat"
 	}
-	if !m.inputFocused {
-		if m.input == "" {
-			return timeIndent + namePart + sep + inputPlaceholderStyle.Render(placeholder)
-		}
-		return timeIndent + namePart + sep + dimStyle.Render(m.input)
-	}
-	cursor := " "
-	if (m.animFrame/4)%2 == 0 {
-		cursor = accentStyle.Render("█")
-	}
-	if m.input == "" {
-		return timeIndent + namePart + sep + cursor
-	}
-	return timeIndent + namePart + sep + chatComposingStyle.Render(m.input) + cursor
+	return renderChatInput(m.myLogin, m.input, placeholder, m.inputFocused, m.animFrame)
 }
 
 // slashCommands defines the available slash commands and their descriptions.

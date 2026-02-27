@@ -63,14 +63,17 @@ type TagStat struct {
 	TotalUpvotes int    `json:"total_upvotes"`
 }
 
+var validTagSet = func() map[string]bool {
+	m := make(map[string]bool, len(ValidTags))
+	for _, t := range ValidTags {
+		m[t] = true
+	}
+	return m
+}()
+
 // ValidTag returns true if the given tag is a known spell tag.
 func ValidTag(tag string) bool {
-	for _, t := range ValidTags {
-		if t == tag {
-			return true
-		}
-	}
-	return false
+	return validTagSet[tag]
 }
 
 // SpellMatch is a spell candidate returned by semantic similarity search.

@@ -2,8 +2,10 @@ package main
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -104,14 +106,14 @@ func run() error {
 	c := client.New(apiURL, token)
 	// Only force re-login on actual auth failures (401), not transient errors.
 	if _, err := c.GetMe(context.Background()); err != nil {
-		if strings.Contains(err.Error(), "HTTP 401") {
+		if client.IsStatus(err, 401) {
 			printGrimoireGreeting()
 			return nil
 		}
 		// Network/server error — launch TUI anyway, it retries internally.
 	}
 
-	app := tui.NewApp(c)
+	app := tui.NewApp(c, version)
 
 	p := tea.NewProgram(app, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
@@ -132,8 +134,21 @@ func runLogin(apiURL string) error {
 	tokenCh := make(chan string, 1)
 	errCh := make(chan error, 1)
 
+	// Generate CSRF state token.
+	stateBytes := make([]byte, 16)
+	if _, err := rand.Read(stateBytes); err != nil {
+		return fmt.Errorf("generate oauth state: %w", err)
+	}
+	expectedState := hex.EncodeToString(stateBytes)
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
+		// Verify CSRF state.
+		if r.URL.Query().Get("state") != expectedState {
+			http.Error(w, "invalid state", http.StatusForbidden)
+			errCh <- fmt.Errorf("callback state mismatch (possible CSRF)")
+			return
+		}
 		code := r.URL.Query().Get("code")
 		if code == "" {
 			http.Error(w, "missing code", http.StatusBadRequest)
@@ -141,8 +156,14 @@ func runLogin(apiURL string) error {
 			return
 		}
 		// Exchange the one-time code for the session token.
+		exchangeBody, err := json.Marshal(map[string]string{"code": code})
+		if err != nil {
+			http.Error(w, "marshal failed", http.StatusInternalServerError)
+			errCh <- fmt.Errorf("cli code exchange marshal: %w", err)
+			return
+		}
 		exchangeResp, exchangeErr := http.Post(apiURL+"/auth/cli-exchange", "application/json",
-			strings.NewReader(`{"code":"`+code+`"}`))
+			bytes.NewReader(exchangeBody))
 		if exchangeErr != nil {
 			http.Error(w, "exchange failed", http.StatusInternalServerError)
 			errCh <- fmt.Errorf("cli code exchange: %w", exchangeErr)
@@ -150,7 +171,7 @@ func runLogin(apiURL string) error {
 		}
 		defer exchangeResp.Body.Close() //nolint:errcheck
 		if exchangeResp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(exchangeResp.Body) //nolint:errcheck // best-effort read for error message
+			body, _ := io.ReadAll(io.LimitReader(exchangeResp.Body, 1<<20)) //nolint:errcheck // best-effort read for error message
 			http.Error(w, "exchange failed", http.StatusInternalServerError)
 			errCh <- fmt.Errorf("cli code exchange: HTTP %d: %s", exchangeResp.StatusCode, string(body))
 			return
@@ -188,7 +209,10 @@ func runLogin(apiURL string) error {
 		}
 		baseURL = u.String()
 	}
-	loginURL := fmt.Sprintf("%s/auth/github/login?cli_port=%d", baseURL, port)
+	loginParams := url.Values{}
+	loginParams.Set("cli_port", strconv.Itoa(port))
+	loginParams.Set("state", expectedState)
+	loginURL := baseURL + "/auth/github/login?" + loginParams.Encode()
 
 	fmt.Printf("Opening browser to authenticate...\n")
 	if err := browser.Open(loginURL); err != nil {
@@ -225,7 +249,7 @@ func runLogin(apiURL string) error {
 		fmt.Printf("Authenticated as @%s\n\n", me.GitHubLogin)
 
 		// Launch TUI automatically after login.
-		app := tui.NewApp(c)
+		app := tui.NewApp(c, version)
 		p := tea.NewProgram(app, tea.WithAltScreen())
 		if _, err := p.Run(); err != nil {
 			return fmt.Errorf("tui error: %w", err)
@@ -505,7 +529,8 @@ func extractBinary(tarballPath, dest string) error {
 			if err != nil {
 				return err
 			}
-			if _, err := io.Copy(out, tr); err != nil {
+			const maxBinarySize = 200 << 20 // 200 MB
+			if _, err := io.Copy(out, io.LimitReader(tr, maxBinarySize)); err != nil {
 				out.Close() //nolint:errcheck
 				return err
 			}

@@ -218,7 +218,7 @@ func (m boardModel) View() string {
 
 		potencyStr := ""
 		if entry.TotalPotency > 0 {
-			potencyStr = potencyStyle(entry.TotalPotency).Render(fmt.Sprintf("P%d", entry.TotalPotency))
+			potencyStr = goldStyle.Render(fmt.Sprintf("P%d", entry.TotalPotency))
 		}
 
 		cityStr := ""
