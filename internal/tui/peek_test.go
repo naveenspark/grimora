@@ -164,8 +164,8 @@ func TestPeekWorkshopProjectsDisplayed(t *testing.T) {
 	if !strings.Contains(view, "Mana Router") {
 		t.Errorf("expected 'Mana Router' in peek view, got:\n%s", view)
 	}
-	if !strings.Contains(view, "WORKSHOP") {
-		t.Errorf("expected 'WORKSHOP' section header in peek view, got:\n%s", view)
+	if !strings.Contains(view, "BUILD JOURNAL") {
+		t.Errorf("expected 'BUILD JOURNAL' section header in peek view, got:\n%s", view)
 	}
 }
 

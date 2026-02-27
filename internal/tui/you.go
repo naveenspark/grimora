@@ -7,6 +7,7 @@ import (
 
 	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/naveenspark/grimora/pkg/client"
 	"github.com/naveenspark/grimora/pkg/domain"
@@ -68,13 +69,14 @@ const (
 const inviteSpellThreshold = 10
 
 type youModel struct {
-	client    *client.Client
-	invites   []domain.Invite
-	me        *domain.Magician
-	statusMsg string
-	width     int
-	height    int
-	section   youSection // active section for navigation
+	client     *client.Client
+	invites    []domain.Invite
+	me         *domain.Magician
+	forgeStats *domain.ForgeStats
+	statusMsg  string
+	width      int
+	height     int
+	section    youSection // active section for navigation
 
 	// workshop
 	projects       []domain.WorkshopProject
@@ -133,6 +135,7 @@ func (m youModel) Update(msg tea.Msg) (youModel, tea.Cmd) {
 		if msg.err == nil && msg.me != nil {
 			m.me = msg.me
 		}
+		m.forgeStats = msg.stats
 		return m, nil
 
 	case workshopLoadedMsg:
@@ -480,7 +483,8 @@ func (m youModel) View() string {
 		sb.WriteString("\n " + upvoteStyle.Render(m.statusMsg) + "\n")
 	}
 
-	sb.WriteString(m.viewWorkshopSection())
+	sb.WriteString(m.viewStatsBar())
+	sb.WriteString(m.viewBuildJournal())
 	sb.WriteString(m.viewInvitesSection())
 
 	return sb.String()
@@ -496,11 +500,53 @@ func projectStatus(updates []domain.ProjectUpdate) string {
 	return "building"
 }
 
-// viewWorkshopSection renders the compact workshop project list.
-func (m youModel) viewWorkshopSection() string {
+// viewStatsBar renders the craft stats summary between identity and build journal.
+func (m youModel) viewStatsBar() string {
 	var sb strings.Builder
 
-	sb.WriteString("\n " + sectionHeaderStyle.Render(fmt.Sprintf("── WORKSHOP %d projects ──", len(m.projects))) + "\n")
+	w := m.width - 4
+	if w < 20 {
+		w = 46
+	}
+	sb.WriteString("\n " + sectionHeaderStyle.Render("── CRAFT "+strings.Repeat("─", max(w-9, 1))) + "\n")
+
+	// Count shipped vs building from projectUpdates
+	shipped := 0
+	building := 0
+	for _, proj := range m.projects {
+		if updates, ok := m.projectUpdates[proj.ID.String()]; ok {
+			if projectStatus(updates) == "shipped" {
+				shipped++
+			} else {
+				building++
+			}
+		} else {
+			building++ // no updates loaded yet = assume building
+		}
+	}
+
+	parts := []string{
+		accentStyle.Render(fmt.Sprintf("%d", shipped)) + dimStyle.Render(" shipped"),
+		dimStyle.Render(fmt.Sprintf("%d", building)) + dimStyle.Render(" building"),
+	}
+
+	if m.forgeStats != nil {
+		parts = append(parts,
+			dimStyle.Render(fmt.Sprintf("%d", m.forgeStats.SpellsForged))+" "+dimStyle.Render("spells"),
+			goldStyle.Render(fmt.Sprintf("P%d", m.forgeStats.TotalPotency)),
+			accentStyle.Render(fmt.Sprintf("#%d", m.forgeStats.Rank)),
+		)
+	}
+
+	sb.WriteString("   " + strings.Join(parts, dimStyle.Render("   ")) + "\n")
+	return sb.String()
+}
+
+// viewBuildJournal renders the build journal with vertical timelines per project.
+func (m youModel) viewBuildJournal() string {
+	var sb strings.Builder
+
+	sb.WriteString("\n " + sectionHeaderStyle.Render(fmt.Sprintf("── BUILD JOURNAL %d projects ──", len(m.projects))) + "\n")
 
 	// Adding/editing mode: two-field form
 	if m.wsState == wsAdding || m.wsState == wsEditing {
@@ -521,45 +567,112 @@ func (m youModel) viewWorkshopSection() string {
 	for i := 0; i < maxRows; i++ {
 		proj := m.projects[i]
 		isActive := i == m.wsCursor && m.section == youSectionWorkshop
+		updates := m.projectUpdates[proj.ID.String()]
 
-		cursor := "  "
-		if isActive {
-			cursor = accentStyle.Render("▸") + " "
+		sb.WriteString(m.renderProjectCard(proj, updates, isActive, i))
+	}
+
+	return sb.String()
+}
+
+// renderProjectCard renders a single project with its vertical timeline.
+func (m youModel) renderProjectCard(proj domain.WorkshopProject, updates []domain.ProjectUpdate, isActive bool, idx int) string {
+	var sb strings.Builder
+
+	// Project header line: cursor + name + badge
+	cursor := "  "
+	if isActive {
+		cursor = accentStyle.Render("▸") + " "
+	}
+
+	nameStr := normalStyle.Render(truncStr(proj.Name, 30))
+	if isActive {
+		nameStr = selectedStyle.Render(truncStr(proj.Name, 30))
+	}
+
+	status := projectStatus(updates)
+	badge := ""
+	if status == "shipped" {
+		badge = goldStyle.Render("shipped")
+	} else {
+		badge = dimStyle.Render("building")
+	}
+
+	// Right-align badge
+	nameWidth := lipgloss.Width(cursor + truncStr(proj.Name, 30))
+	padLen := m.width - 2 - nameWidth - lipgloss.Width(badge)
+	if padLen < 2 {
+		padLen = 2
+	}
+	pad := strings.Repeat(" ", padLen)
+
+	fmt.Fprintf(&sb, " %s%s%s%s\n", cursor, nameStr, pad, badge)
+
+	// Insight line
+	if proj.Insight != "" {
+		sb.WriteString("   " + dimStyle.Render(proj.Insight) + "\n")
+	}
+
+	// Delete confirmation overlay
+	if idx == m.wsCursor && m.wsState == wsDeleting {
+		sb.WriteString("   " + rejectStyle.Render("delete this project? ") +
+			accentStyle.Render("y") + dimStyle.Render("/") + dimStyle.Render("n") + "\n")
+		return sb.String()
+	}
+
+	// Timeline
+	if len(updates) > 0 {
+		sb.WriteString("   " + dimStyle.Render("│") + "\n")
+
+		// Show max 5 most recent; if more, hint at earlier
+		maxShow := 5
+		start := 0
+		if len(updates) > maxShow {
+			start = len(updates) - maxShow
+			sb.WriteString("   " + dimStyle.Render(fmt.Sprintf("│ ... %d earlier updates", start)) + "\n")
 		}
 
-		nameStr := normalStyle.Render(truncStr(proj.Name, 24))
-		if isActive {
-			nameStr = selectedStyle.Render(truncStr(proj.Name, 24))
-		}
+		for j := start; j < len(updates); j++ {
+			u := updates[j]
+			ts := metaStyle.Render(formatTime(u.CreatedAt))
 
-		dateStr := metaStyle.Render(formatTime(proj.UpdatedAt))
+			// Right-align timestamp
+			var dotLine string
+			switch u.Kind {
+			case "start":
+				dotLine = "   " + accentStyle.Render("●") + " " + accentStyle.Render("started building")
+			case "ship":
+				dotLine = "   " + goldStyle.Render("✦") + " " + goldStyle.Render("shipped")
+			default:
+				dotLine = "   " + dimStyle.Render("●") + " " + dimStyle.Render(truncStr(u.Body, 40))
+			}
 
-		badge := ""
-		if updates, ok := m.projectUpdates[proj.ID.String()]; ok {
-			status := projectStatus(updates)
-			if status == "shipped" {
-				badge = " " + accentStyle.Render("[shipped]")
-			} else {
-				badge = " " + dimStyle.Render("[building]")
+			tsPad := m.width - 2 - lipgloss.Width(dotLine) - lipgloss.Width(ts)
+			if tsPad < 2 {
+				tsPad = 2
+			}
+			sb.WriteString(dotLine + strings.Repeat(" ", tsPad) + ts + "\n")
+
+			// Body text on connector line (for start/ship with body)
+			if u.Kind == "ship" && u.Body != "" {
+				sb.WriteString("   " + dimStyle.Render("│") + " " + dimStyle.Render(u.Body) + "\n")
+			} else if u.Kind == "start" && u.Body != "" {
+				sb.WriteString("   " + dimStyle.Render("│") + " " + dimStyle.Render(u.Body) + "\n")
+			}
+
+			// Connector between dots (except after last)
+			if j < len(updates)-1 {
+				sb.WriteString("   " + dimStyle.Render("│") + "\n")
 			}
 		}
 
-		// Delete confirmation on selected row
-		if i == m.wsCursor && m.wsState == wsDeleting {
-			fmt.Fprintf(&sb, " %s%s  %s%s\n", cursor, nameStr, dateStr, badge)
-			sb.WriteString("   " + rejectStyle.Render("delete this project? ") +
-				accentStyle.Render("y") + dimStyle.Render("/") + dimStyle.Render("n") + "\n")
-			continue
+		// Active projects end with continuation marker
+		if status != "shipped" {
+			sb.WriteString("\n   " + dimStyle.Render("○ ···") + "\n")
 		}
-
-		insightStr := ""
-		if proj.Insight != "" {
-			insightStr = "\n     " + dimStyle.Render(proj.Insight)
-		}
-
-		fmt.Fprintf(&sb, " %s%s  %s%s%s\n", cursor, nameStr, dateStr, badge, insightStr)
 	}
 
+	sb.WriteString("\n")
 	return sb.String()
 }
 

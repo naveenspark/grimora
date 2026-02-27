@@ -27,17 +27,24 @@ type peekFollowMsg struct {
 	err   error
 }
 
+type peekProjectUpdatesMsg struct {
+	projectID string
+	updates   []domain.ProjectUpdate
+	err       error
+}
+
 type peekModel struct {
-	client   *client.Client
-	card     *domain.MagicianCard
-	projects []domain.WorkshopProject
-	closed   bool
-	err      string
-	width    int
+	client         *client.Client
+	card           *domain.MagicianCard
+	projects       []domain.WorkshopProject
+	projectUpdates map[string][]domain.ProjectUpdate
+	closed         bool
+	err            string
+	width          int
 }
 
 func newPeekModel(c *client.Client) peekModel {
-	return peekModel{client: c}
+	return peekModel{client: c, projectUpdates: make(map[string][]domain.ProjectUpdate)}
 }
 
 func (m peekModel) load(login string) tea.Cmd {
@@ -72,6 +79,27 @@ func (m peekModel) Update(msg tea.Msg) (peekModel, tea.Cmd) {
 	case peekWorkshopMsg:
 		if msg.err == nil {
 			m.projects = msg.projects
+		}
+		// Load project updates for timelines
+		var cmds []tea.Cmd
+		if m.client != nil {
+			for _, p := range m.projects {
+				pid := p.ID.String()
+				c := m.client
+				cmds = append(cmds, func() tea.Msg {
+					updates, err := c.ListProjectUpdates(context.Background(), pid)
+					return peekProjectUpdatesMsg{projectID: pid, updates: updates, err: err}
+				})
+			}
+		}
+		if len(cmds) > 0 {
+			return m, tea.Batch(cmds...)
+		}
+		return m, nil
+
+	case peekProjectUpdatesMsg:
+		if msg.err == nil {
+			m.projectUpdates[msg.projectID] = msg.updates
 		}
 		return m, nil
 
@@ -161,14 +189,62 @@ func (m peekModel) View() string {
 	sb.WriteString(metaStyle.Render(stats) + "\n")
 	sb.WriteString(metaStyle.Render("---") + "\n")
 
-	// Workshop section
+	// Workshop section with timelines
 	if len(m.projects) > 0 {
-		sb.WriteString("\n" + sectionHeaderStyle.Render("── WORKSHOP ──") + "\n")
+		sb.WriteString("\n" + sectionHeaderStyle.Render("── BUILD JOURNAL ──") + "\n")
 		for _, p := range m.projects {
-			sb.WriteString("  " + normalStyle.Render(p.Name) + "\n")
-			if p.Insight != "" {
-				sb.WriteString("    " + grimVoiceStyle.Render(p.Insight) + "\n")
+			updates := m.projectUpdates[p.ID.String()]
+			status := projectStatus(updates)
+			badge := dimStyle.Render("building")
+			if status == "shipped" {
+				badge = goldStyle.Render("shipped")
 			}
+			nameW := lipgloss.Width("  " + p.Name)
+			badgeW := lipgloss.Width(badge)
+			innerW := cardWidth - 4 // account for border padding
+			padLen := innerW - nameW - badgeW
+			if padLen < 2 {
+				padLen = 2
+			}
+			sb.WriteString("  " + normalStyle.Render(p.Name) + strings.Repeat(" ", padLen) + badge + "\n")
+			if p.Insight != "" {
+				sb.WriteString("    " + dimStyle.Render(p.Insight) + "\n")
+			}
+			// Timeline
+			if len(updates) > 0 {
+				sb.WriteString("    " + dimStyle.Render("│") + "\n")
+				maxShow := 3
+				start := 0
+				if len(updates) > maxShow {
+					start = len(updates) - maxShow
+				}
+				for j := start; j < len(updates); j++ {
+					u := updates[j]
+					ts := metaStyle.Render(formatTime(u.CreatedAt))
+					switch u.Kind {
+					case "start":
+						sb.WriteString("    " + accentStyle.Render("●") + " " + accentStyle.Render("started") + "  " + ts + "\n")
+					case "ship":
+						sb.WriteString("    " + goldStyle.Render("✦") + " " + goldStyle.Render("shipped") + "  " + ts + "\n")
+						if u.Body != "" {
+							sb.WriteString("    " + dimStyle.Render("│") + " " + dimStyle.Render(u.Body) + "\n")
+						}
+					default:
+						body := u.Body
+						if len([]rune(body)) > 30 {
+							body = string([]rune(body)[:29]) + "…"
+						}
+						sb.WriteString("    " + dimStyle.Render("●") + " " + dimStyle.Render(body) + "  " + ts + "\n")
+					}
+					if j < len(updates)-1 {
+						sb.WriteString("    " + dimStyle.Render("│") + "\n")
+					}
+				}
+				if status != "shipped" {
+					sb.WriteString("\n    " + dimStyle.Render("○ ···") + "\n")
+				}
+			}
+			sb.WriteString("\n")
 		}
 	}
 

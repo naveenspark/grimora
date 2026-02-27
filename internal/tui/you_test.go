@@ -201,14 +201,14 @@ func TestYouDeleteLastItemAdjustsCursor(t *testing.T) {
 	}
 }
 
-func TestYouViewShowsWorkshopSection(t *testing.T) {
+func TestYouViewShowsBuildJournalSection(t *testing.T) {
 	m := newTestYouModel()
 	projects := []domain.WorkshopProject{makeTestProject("MyProject", "testing")}
 	m, _ = m.Update(workshopLoadedMsg{projects: projects})
 
 	view := m.View()
-	if !strings.Contains(view, "WORKSHOP") {
-		t.Errorf("expected 'WORKSHOP' in view, got:\n%s", view)
+	if !strings.Contains(view, "BUILD JOURNAL") {
+		t.Errorf("expected 'BUILD JOURNAL' in view, got:\n%s", view)
 	}
 }
 
@@ -294,8 +294,8 @@ func TestYouProjectStatusBadge(t *testing.T) {
 	})
 
 	view := m.View()
-	if !strings.Contains(view, "[building]") {
-		t.Errorf("expected '[building]' badge in view, got:\n%s", view)
+	if !strings.Contains(view, "building") {
+		t.Errorf("expected 'building' badge in view, got:\n%s", view)
 	}
 }
 
@@ -314,8 +314,8 @@ func TestYouProjectStatusShipped(t *testing.T) {
 	})
 
 	view := m.View()
-	if !strings.Contains(view, "[shipped]") {
-		t.Errorf("expected '[shipped]' badge in view, got:\n%s", view)
+	if !strings.Contains(view, "shipped") {
+		t.Errorf("expected 'shipped' badge in view, got:\n%s", view)
 	}
 }
 
@@ -333,5 +333,94 @@ func TestYouGrimoireQuipRendered(t *testing.T) {
 	// architect quip: "you design the spells that others dare not imagine."
 	if !strings.Contains(view, "design") {
 		t.Errorf("expected architect quip in view, got:\n%s", view)
+	}
+}
+
+func TestYouStatsBarRendered(t *testing.T) {
+	m := newTestYouModel()
+	m, _ = m.Update(meLoadedMsg{
+		me:    &domain.Magician{ID: uuid.New(), GitHubLogin: "wizard"},
+		stats: &domain.ForgeStats{SpellsForged: 12, TotalPotency: 28, Rank: 4},
+	})
+
+	view := m.View()
+	if !strings.Contains(view, "CRAFT") {
+		t.Errorf("expected 'CRAFT' section in view, got:\n%s", view)
+	}
+	if !strings.Contains(view, "P28") {
+		t.Errorf("expected 'P28' potency in view, got:\n%s", view)
+	}
+	if !strings.Contains(view, "#4") {
+		t.Errorf("expected '#4' rank in view, got:\n%s", view)
+	}
+}
+
+func TestYouBuildTimelineRendered(t *testing.T) {
+	m := newTestYouModel()
+	proj := makeTestProject("Timeline Project", "test")
+	m, _ = m.Update(workshopLoadedMsg{projects: []domain.WorkshopProject{proj}})
+	m, _ = m.Update(projectUpdatesMsg{
+		projectID: proj.ID.String(),
+		updates: []domain.ProjectUpdate{
+			{Kind: "start", Body: "", CreatedAt: time.Now().Add(-48 * time.Hour)},
+			{Kind: "update", Body: "added search", CreatedAt: time.Now().Add(-24 * time.Hour)},
+		},
+	})
+
+	view := m.View()
+	if !strings.Contains(view, "●") {
+		t.Errorf("expected timeline dot '●' in view, got:\n%s", view)
+	}
+	if !strings.Contains(view, "started building") {
+		t.Errorf("expected 'started building' in view, got:\n%s", view)
+	}
+	if !strings.Contains(view, "added search") {
+		t.Errorf("expected 'added search' in view, got:\n%s", view)
+	}
+}
+
+func TestYouBuildTimelineShipMarker(t *testing.T) {
+	m := newTestYouModel()
+	proj := makeTestProject("Shipped Project", "done")
+	m, _ = m.Update(workshopLoadedMsg{projects: []domain.WorkshopProject{proj}})
+	m, _ = m.Update(projectUpdatesMsg{
+		projectID: proj.ID.String(),
+		updates: []domain.ProjectUpdate{
+			{Kind: "start", Body: "", CreatedAt: time.Now().Add(-72 * time.Hour)},
+			{Kind: "ship", Body: "v1.0", CreatedAt: time.Now().Add(-1 * time.Hour)},
+		},
+	})
+
+	view := m.View()
+	if !strings.Contains(view, "✦") {
+		t.Errorf("expected ship marker '✦' in view, got:\n%s", view)
+	}
+}
+
+func TestYouTimelineMaxUpdates(t *testing.T) {
+	m := newTestYouModel()
+	proj := makeTestProject("Many Updates", "busy")
+	m, _ = m.Update(workshopLoadedMsg{projects: []domain.WorkshopProject{proj}})
+
+	updates := make([]domain.ProjectUpdate, 8)
+	for i := range updates {
+		updates[i] = domain.ProjectUpdate{
+			Kind:      "update",
+			Body:      "update " + string(rune('A'+i)),
+			CreatedAt: time.Now().Add(-time.Duration(8-i) * time.Hour),
+		}
+	}
+	m, _ = m.Update(projectUpdatesMsg{
+		projectID: proj.ID.String(),
+		updates:   updates,
+	})
+
+	view := m.View()
+	if !strings.Contains(view, "earlier") {
+		t.Errorf("expected 'earlier' hint for truncated timeline, got:\n%s", view)
+	}
+	// Should show "3 earlier updates" (8 - 5 = 3)
+	if !strings.Contains(view, "3 earlier") {
+		t.Errorf("expected '3 earlier' in view, got:\n%s", view)
 	}
 }
