@@ -308,6 +308,105 @@ func potencyStyle(potency int) lipgloss.Style {
 	}
 }
 
+// cardBorder renders animated top or bottom border for rich message cards.
+// pos: "top" or "bottom". label: optional header text (top only).
+// baseColor: hex color. frame: 0=static, 1-20=animating. width: terminal width.
+func cardBorder(pos, label, baseColor string, frame, width int) string {
+	w := width - 4
+	if w < 10 {
+		w = 10
+	}
+
+	if pos == "bottom" {
+		border := " └" + strings.Repeat("─", w)
+		if frame > 0 && frame <= 20 {
+			return animBorderLine(border, baseColor, frame, w)
+		}
+		return lipgloss.NewStyle().Foreground(lipgloss.Color(baseColor)).Render(border)
+	}
+
+	// Top border with label
+	var header string
+	if label != "" {
+		header = " ┌ " + label + " "
+		remaining := w - lipgloss.Width(header) + 2 // +2 for " ┌"
+		if remaining < 1 {
+			remaining = 1
+		}
+		header += lipgloss.NewStyle().Foreground(lipgloss.Color(baseColor)).Render(strings.Repeat("─", remaining))
+	} else {
+		header = " ┌" + strings.Repeat("─", w)
+	}
+
+	if frame > 0 && frame <= 20 && label == "" {
+		return animBorderLine(header, baseColor, frame, w)
+	}
+	// Label cards: animate just the border dashes
+	if frame > 0 && frame <= 20 {
+		remaining := w - lipgloss.Width(" ┌ "+label+" ") + 2
+		if remaining < 1 {
+			remaining = 1
+		}
+		prefix := " ┌ " + label + " "
+		return prefix + animBorderDashes(remaining, baseColor, frame)
+	}
+	return header
+}
+
+// animBorderLine renders a full border line with sine-wave brightness animation.
+func animBorderLine(line, baseColor string, frame, width int) string {
+	r0, g0, b0 := hexToRGB(baseColor)
+	// Dim version: 40% brightness
+	rD, gD, bD := int(float64(r0)*0.4), int(float64(g0)*0.4), int(float64(b0)*0.4)
+
+	t := float64(frame)
+	var out string
+	for i, ch := range line {
+		x := float64(i) / float64(max(width, 1))
+		phase := t*0.3 - x*4.0
+		b := math.Sin(phase)*0.5 + 0.5
+		b = math.Pow(b, 1.5)
+		r := clampByte(float64(rD) + b*float64(r0-rD))
+		g := clampByte(float64(gD) + b*float64(g0-gD))
+		bl := clampByte(float64(bD) + b*float64(b0-bD))
+		c := fmt.Sprintf("#%02X%02X%02X", r, g, bl)
+		out += lipgloss.NewStyle().Foreground(lipgloss.Color(c)).Render(string(ch))
+	}
+	return out
+}
+
+// animBorderDashes renders N dashes with sine-wave brightness.
+func animBorderDashes(n int, baseColor string, frame int) string {
+	r0, g0, b0 := hexToRGB(baseColor)
+	rD, gD, bD := int(float64(r0)*0.4), int(float64(g0)*0.4), int(float64(b0)*0.4)
+
+	t := float64(frame)
+	var out string
+	for i := 0; i < n; i++ {
+		x := float64(i) / float64(max(n, 1))
+		phase := t*0.3 - x*4.0
+		b := math.Sin(phase)*0.5 + 0.5
+		b = math.Pow(b, 1.5)
+		r := clampByte(float64(rD) + b*float64(r0-rD))
+		g := clampByte(float64(gD) + b*float64(g0-gD))
+		bl := clampByte(float64(bD) + b*float64(b0-bD))
+		c := fmt.Sprintf("#%02X%02X%02X", r, g, bl)
+		out += lipgloss.NewStyle().Foreground(lipgloss.Color(c)).Render("─")
+	}
+	return out
+}
+
+// hexToRGB parses a hex color string (#RRGGBB) into r,g,b ints.
+func hexToRGB(hex string) (int, int, int) {
+	hex = strings.TrimPrefix(hex, "#")
+	if len(hex) != 6 {
+		return 128, 128, 128
+	}
+	var r, g, b int
+	_, _ = fmt.Sscanf(hex, "%02x%02x%02x", &r, &g, &b) //nolint:errcheck
+	return r, g, b
+}
+
 // helpEntry renders a single "key label" pair for help bars.
 func helpEntry(key, label string) string {
 	return helpKeyStyle.Render(key) + " " + helpLabelStyle.Render(label)

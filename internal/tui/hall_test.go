@@ -124,21 +124,21 @@ func TestHallConnectedState(t *testing.T) {
 
 func TestHallInputFocusToggle(t *testing.T) {
 	m := newTestHallModel()
-	// Default: inputFocused=false (nav mode, so tab keys work)
-	if m.inputFocused {
-		t.Fatal("expected inputFocused=false by default")
-	}
-
-	// Press Enter to focus
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	// Default: inputFocused=true (talk mode — chat-first UX)
 	if !m.inputFocused {
-		t.Error("expected inputFocused=true after Enter, got false")
+		t.Fatal("expected inputFocused=true by default")
 	}
 
 	// Press Esc to unfocus
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	if m.inputFocused {
 		t.Error("expected inputFocused=false after Esc, got true")
+	}
+
+	// Press Enter to refocus
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if !m.inputFocused {
+		t.Error("expected inputFocused=true after Enter, got false")
 	}
 }
 

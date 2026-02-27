@@ -31,7 +31,9 @@ func TestAppTabSwitching(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.key, func(t *testing.T) {
-			model, _ := newTestApp().Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(tc.key)})
+			app := newTestApp()
+			app.hall.inputFocused = false // nav mode so global keys work
+			model, _ := app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(tc.key)})
 			a := model.(App)
 			if a.view != tc.wantView {
 				t.Errorf("after key %q: expected view=%d, got %d", tc.key, tc.wantView, a.view)
@@ -60,7 +62,7 @@ func TestAppPeekOverlayOpenAndClose(t *testing.T) {
 
 func TestAppGlobalQuitOnQ(t *testing.T) {
 	a := newTestApp()
-	// Default view is Hall, not editing — q should quit
+	a.hall.inputFocused = false // nav mode so global keys work
 	_, cmd := a.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
 	if cmd == nil {
 		t.Fatal("expected quit command on 'q', got nil")
@@ -69,6 +71,7 @@ func TestAppGlobalQuitOnQ(t *testing.T) {
 
 func TestAppEscFromCreateReturnsToHall(t *testing.T) {
 	a := newTestApp()
+	a.hall.inputFocused = false // nav mode so global keys work
 
 	// Switch to create view
 	model, _ := a.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
@@ -87,6 +90,7 @@ func TestAppEscFromCreateReturnsToHall(t *testing.T) {
 
 func TestAppIsEditingGrimoireSearch(t *testing.T) {
 	a := newTestApp()
+	a.hall.inputFocused = false // nav mode so global keys work
 
 	// Switch to grimoire tab
 	model, _ := a.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("2")})

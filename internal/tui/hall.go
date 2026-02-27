@@ -22,8 +22,17 @@ var mentionRe = regexp.MustCompile(`@(\w+)`)
 // hallPollInterval is how often the Hall polls for new messages.
 const hallPollInterval = 3 * time.Second
 
+// hallAnimInterval is the frame rate for card entrance animations.
+const hallAnimInterval = 80 * time.Millisecond
+
+// hallAnimFrames is the total number of animation frames (80ms * 20 = 1.6s).
+const hallAnimFrames = 20
+
 // hallTickMsg fires on each poll interval.
 type hallTickMsg time.Time
+
+// hallAnimTickMsg fires on each animation frame interval.
+type hallAnimTickMsg time.Time
 
 // cursorBlinkMsg toggles the input cursor on/off.
 type cursorBlinkMsg struct{}
@@ -37,6 +46,12 @@ func cursorBlinkCmd() tea.Cmd {
 func hallTickCmd() tea.Cmd {
 	return tea.Tick(hallPollInterval, func(t time.Time) tea.Msg {
 		return hallTickMsg(t)
+	})
+}
+
+func hallAnimTickCmd() tea.Cmd {
+	return tea.Tick(hallAnimInterval, func(t time.Time) tea.Msg {
+		return hallAnimTickMsg(t)
 	})
 }
 
@@ -117,13 +132,14 @@ type hallModel struct {
 
 func newHallModel(c *client.Client) hallModel {
 	return hallModel{
-		client:  c,
-		seenIDs: make(map[string]bool),
+		client:       c,
+		seenIDs:      make(map[string]bool),
+		inputFocused: true,
 	}
 }
 
 func (m hallModel) Init() tea.Cmd {
-	return tea.Batch(m.loadMessages(), cursorBlinkCmd())
+	return tea.Batch(m.loadMessages(), cursorBlinkCmd(), hallAnimTickCmd())
 }
 
 // hallSlug is the default public chat room.
@@ -296,6 +312,23 @@ func (m hallModel) Update(msg tea.Msg) (hallModel, tea.Cmd) {
 			m.cursorOn = !m.cursorOn
 		}
 		return m, cursorBlinkCmd()
+
+	case hallAnimTickMsg:
+		active := false
+		for i := range m.messages {
+			f := m.messages[i].animFrame
+			if f > 0 && f <= hallAnimFrames {
+				m.messages[i].animFrame++
+				active = true
+				if m.messages[i].animFrame > hallAnimFrames {
+					m.messages[i].animFrame = 0 // static
+				}
+			}
+		}
+		if active {
+			return m, hallAnimTickCmd()
+		}
+		return m, hallAnimTickCmd() // keep ticking to catch new messages
 
 	case tea.KeyMsg:
 		// Any keypress resets cursor to visible
@@ -611,13 +644,13 @@ func (m hallModel) renderMessage(msg chatMessage) string {
 	// Rich message rendering by kind
 	switch msg.Kind {
 	case "build-start":
-		return m.renderRichMessage(msg, forgeStyle, "started a build", msg.metaTitle())
+		return m.renderBuildStartCard(msg)
 	case "build-update":
 		return m.renderBuildUpdate(msg)
 	case "ship":
-		return m.renderRichMessage(msg, goldStyle, "shipped", msg.metaTitle())
+		return m.renderShipCard(msg)
 	case "seek":
-		return m.renderRichMessage(msg, goldStyle, "seeking", msg.Body)
+		return m.renderSeekCard(msg)
 	case "forge-verdict":
 		return m.renderForgeVerdict(msg)
 	case "cast":
@@ -679,57 +712,93 @@ func (m hallModel) renderPlainMessage(msg chatMessage) string {
 	return result
 }
 
-// renderRichMessage renders a styled card for build-start, ship, seek.
-func (m hallModel) renderRichMessage(msg chatMessage, style lipgloss.Style, verb, title string) string {
-	bar := style.Render("│")
-	sender := style.Render(msg.SenderLogin)
-	titleStr := goldStyle.Render(`"` + truncStr(cleanTitle(title), 50) + `"`)
-
-	line := " " + bar + "  " + sender + " " + verb + " · " + titleStr
-	return line
-}
-
-// renderBuildUpdate renders a build update with a green dot.
-func (m hallModel) renderBuildUpdate(msg chatMessage) string {
-	dot := accentStyle.Render("·")
-	sender := accentStyle.Render(msg.SenderLogin)
-	return " " + dot + "  " + sender + " · " + dimStyle.Render(msg.Body)
-}
-
-// renderForgeVerdict renders a forge accept/reject card.
-func (m hallModel) renderForgeVerdict(msg chatMessage) string {
+// renderBuildStartCard renders a multi-line build-start card with animation.
+func (m hallModel) renderBuildStartCard(msg chatMessage) string {
+	const color = "#f59e0b" // orange
 	title := msg.metaTitle()
-	potency := msg.Metadata["potency"]
-	bar := accentStyle.Render("│")
-	sender := accentStyle.Render(msg.SenderLogin)
-	titleStr := goldStyle.Render(`"` + truncStr(cleanTitle(title), 50) + `"`)
-
-	line := " " + bar + "  " + sender + " forged · " + titleStr
-	if potency != "" {
-		line += " · " + potencyStyle(potencyFromStr(potency)).Render("P"+potency)
-	}
-	return line
+	label := forgeStyle.Render("🔨 " + msg.SenderLogin + " started a build")
+	top := cardBorder("top", label, color, msg.animFrame, m.width)
+	bar := forgeStyle.Render(" │")
+	body := bar + "  " + goldStyle.Render(truncStr(cleanTitle(title), 60))
+	bottom := cardBorder("bottom", "", color, msg.animFrame, m.width)
+	return top + "\n" + body + "\n" + bottom
 }
 
-// renderCast renders a grimoire cast message.
-func (m hallModel) renderCast(msg chatMessage) string {
-	bar := castStyle.Render("│")
-	label := grimLabelStyle.Render("Grimoire:")
-	bodyWidth := m.width - 16
+// renderShipCard renders a multi-line ship card with animation.
+func (m hallModel) renderShipCard(msg chatMessage) string {
+	const color = "#d4a844" // gold
+	title := msg.metaTitle()
+	label := goldStyle.Render("✦ SHIPPED")
+	top := cardBorder("top", label, color, msg.animFrame, m.width)
+	bar := goldStyle.Render(" │")
+	body := bar + "  " + goldStyle.Render(msg.SenderLogin+" shipped ") + goldStyle.Bold(true).Render(`"`+truncStr(cleanTitle(title), 50)+`"`)
+	bottom := cardBorder("bottom", "", color, msg.animFrame, m.width)
+	return top + "\n" + body + "\n" + bottom
+}
+
+// renderSeekCard renders a multi-line seek card with animation.
+func (m hallModel) renderSeekCard(msg chatMessage) string {
+	const color = "#d4a844" // gold
+	label := goldStyle.Render("✧ SEEK from " + msg.SenderLogin)
+	top := cardBorder("top", label, color, msg.animFrame, m.width)
+	bar := goldStyle.Render(" │")
+	bodyWidth := m.width - 8
 	if bodyWidth < 20 {
 		bodyWidth = 20
 	}
 	wrapped := lipgloss.NewStyle().Width(bodyWidth).Render(msg.Body)
 	lines := strings.Split(wrapped, "\n")
-
-	result := " " + bar + "  " + label + " " + grimVoiceStyle.Render(lines[0])
-	if len(lines) > 1 {
-		indent := strings.Repeat(" ", 6)
-		for _, line := range lines[1:] {
-			result += "\n" + indent + grimVoiceStyle.Render(line)
-		}
+	var bodyLines []string
+	for _, line := range lines {
+		bodyLines = append(bodyLines, bar+"  "+chatTextStyle.Render(line))
 	}
-	return result
+	bottom := cardBorder("bottom", "", color, msg.animFrame, m.width)
+	return top + "\n" + strings.Join(bodyLines, "\n") + "\n" + bottom
+}
+
+// renderBuildUpdate renders a compact build update (no box).
+func (m hallModel) renderBuildUpdate(msg chatMessage) string {
+	return "   " + accentStyle.Render("⚡") + " " + accentStyle.Render(msg.SenderLogin) + " · " + dimStyle.Render(msg.Body)
+}
+
+// renderForgeVerdict renders a multi-line forge verdict card with animation.
+func (m hallModel) renderForgeVerdict(msg chatMessage) string {
+	const color = "#34d474" // green
+	title := msg.metaTitle()
+	potency := msg.Metadata["potency"]
+	pStr := ""
+	if potency != "" {
+		pStr = " P" + potency
+	}
+	label := accentStyle.Render("⚡ " + msg.SenderLogin + " forged" + pStr)
+	top := cardBorder("top", label, color, msg.animFrame, m.width)
+	bar := accentStyle.Render(" │")
+	body := bar + "  " + goldStyle.Render(`"`+truncStr(cleanTitle(title), 55)+`"`)
+	if potency != "" {
+		body += " " + potencyStyle(potencyFromStr(potency)).Render("P"+potency)
+	}
+	bottom := cardBorder("bottom", "", color, msg.animFrame, m.width)
+	return top + "\n" + body + "\n" + bottom
+}
+
+// renderCast renders a multi-line Grimoire cast card with animation.
+func (m hallModel) renderCast(msg chatMessage) string {
+	const color = "#22d3ee" // cyan
+	label := castStyle.Render("✦ Grimoire")
+	top := cardBorder("top", label, color, msg.animFrame, m.width)
+	bar := castStyle.Render(" │")
+	bodyWidth := m.width - 8
+	if bodyWidth < 20 {
+		bodyWidth = 20
+	}
+	wrapped := lipgloss.NewStyle().Width(bodyWidth).Render(msg.Body)
+	lines := strings.Split(wrapped, "\n")
+	var bodyLines []string
+	for _, line := range lines {
+		bodyLines = append(bodyLines, bar+"  "+grimVoiceStyle.Render(line))
+	}
+	bottom := cardBorder("bottom", "", color, msg.animFrame, m.width)
+	return top + "\n" + strings.Join(bodyLines, "\n") + "\n" + bottom
 }
 
 // potencyFromStr converts a string potency to int, defaulting to 1.
