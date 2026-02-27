@@ -904,7 +904,7 @@ func (m hallModel) renderInput() string {
 		return timeIndent + namePart + sep + dimStyle.Render(m.input)
 	}
 	cursor := " "
-	if m.animFrame%2 == 0 {
+	if (m.animFrame/4)%2 == 0 {
 		cursor = accentStyle.Render("█")
 	}
 	if m.input == "" {
