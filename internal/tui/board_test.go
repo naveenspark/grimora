@@ -85,8 +85,8 @@ func TestBoardEmptyState(t *testing.T) {
 	m, _ = m.Update(boardLoadedMsg{entries: nil})
 
 	view := m.View()
-	if !strings.Contains(view, "no magicians yet") {
-		t.Errorf("expected 'no magicians yet' in empty board, got:\n%s", view)
+	if !strings.Contains(view, "board is empty") {
+		t.Errorf("expected empty board message in view, got:\n%s", view)
 	}
 }
 

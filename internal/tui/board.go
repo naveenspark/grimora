@@ -167,18 +167,17 @@ func (m boardModel) handleKey(msg tea.KeyMsg) (boardModel, tea.Cmd) {
 func (m boardModel) View() string {
 	var b strings.Builder
 
-	// Header
-	title := "Board"
-	if m.guildFilter != "" {
-		title = "Board · " + GuildStyle(m.guildFilter).Render(m.guildFilter)
+	// Filter line (only show if a filter is active)
+	if m.guildFilter != "" || m.cityFilter != "" {
+		parts := []string{}
+		if m.guildFilter != "" {
+			parts = append(parts, GuildStyle(m.guildFilter).Render(m.guildFilter))
+		}
+		if m.cityFilter != "" {
+			parts = append(parts, dimStyle.Render(m.cityFilter))
+		}
+		b.WriteString(" " + strings.Join(parts, dimStyle.Render(" · ")) + "\n")
 	}
-	if m.cityFilter != "" {
-		title += " · " + dimStyle.Render(m.cityFilter)
-	}
-	b.WriteString(" " + presenceTitleStyle.Render(title) + "\n")
-
-	sep := strings.Repeat("─", max(m.width-2, 4))
-	b.WriteString(" " + metaStyle.Render(sep) + "\n")
 
 	if m.loading && len(m.entries) == 0 {
 		b.WriteString(" " + dimStyle.Render("loading...") + "\n")
@@ -189,7 +188,7 @@ func (m boardModel) View() string {
 		return b.String()
 	}
 	if len(m.entries) == 0 {
-		b.WriteString("\n " + dimStyle.Render("no magicians yet") + "\n")
+		b.WriteString("\n " + dimStyle.Render("the board is empty — be the first to forge a spell") + "\n")
 		return b.String()
 	}
 
