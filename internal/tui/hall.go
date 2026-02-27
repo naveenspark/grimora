@@ -38,7 +38,7 @@ type hallAnimTickMsg time.Time
 type cursorBlinkMsg struct{}
 
 func cursorBlinkCmd() tea.Cmd {
-	return tea.Tick(300*time.Millisecond, func(time.Time) tea.Msg {
+	return tea.Tick(150*time.Millisecond, func(time.Time) tea.Msg {
 		return cursorBlinkMsg{}
 	})
 }
