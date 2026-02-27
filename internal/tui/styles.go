@@ -212,6 +212,10 @@ var (
 	chatSelfTextStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#c0c4d0"))
 
+	// Composing text — brighter than sent messages so the draft stands out.
+	chatComposingStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#e4e4ec"))
+
 	chatTextStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#8890a0"))
 

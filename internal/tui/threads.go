@@ -454,7 +454,7 @@ func (m threadsModel) renderConvoInput() string {
 	if m.input == "" {
 		return timeIndent + namePart + sep + cursor
 	}
-	return timeIndent + namePart + sep + chatSelfTextStyle.Render(m.input) + cursor
+	return timeIndent + namePart + sep + chatComposingStyle.Render(m.input) + cursor
 }
 
 func (m threadsModel) helpKeys() string {

@@ -910,7 +910,7 @@ func (m hallModel) renderInput() string {
 	if m.input == "" {
 		return timeIndent + namePart + sep + cursor
 	}
-	return timeIndent + namePart + sep + chatSelfTextStyle.Render(m.input) + cursor
+	return timeIndent + namePart + sep + chatComposingStyle.Render(m.input) + cursor
 }
 
 // slashCommands defines the available slash commands and their descriptions.
