@@ -614,11 +614,8 @@ func (m hallModel) updateNav(msg tea.KeyMsg) (hallModel, tea.Cmd) {
 func (m hallModel) View() string {
 	var b strings.Builder
 
-	// Reserve lines: input(1) + presence(1 if logged in) + status(0-1) + autocomplete.
+	// Reserve lines: input(1) + status(0-1) + autocomplete.
 	chrome := 1 // input
-	if m.myLogin != "" {
-		chrome++ // presence line
-	}
 	if m.status != "" {
 		chrome++
 	}
@@ -673,11 +670,6 @@ func (m hallModel) View() string {
 	// --- Project autocomplete popup ---
 	if m.projectActive && len(m.projectMatches) > 0 {
 		b.WriteString(m.renderProjectPopup())
-	}
-
-	// --- Presence line (username only; online count is in the tab bar) ---
-	if m.myLogin != "" {
-		b.WriteString(" " + dimStyle.Render(m.myLogin) + "\n")
 	}
 
 	// --- Input line ---
@@ -899,7 +891,7 @@ func potencyFromStr(s string) int {
 // The 10-space indent matches the 8-char timestamp field + 2 trailing spaces
 // in renderPlainMessage, so the cursor sits where sent messages appear.
 func (m hallModel) renderInput() string {
-	const timeIndent = "          " // 10 spaces — matches timestamp + gap
+	const timeIndent = "           " // 11 spaces — matches " " + 8-char timestamp + "  "
 
 	sep := chatSepStyle.Render(" · ")
 	namePart := chatSelfNameStyle.Render("you")

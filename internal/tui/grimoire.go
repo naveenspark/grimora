@@ -353,8 +353,12 @@ func (m grimoireModel) View() string {
 	// List view
 	var b strings.Builder
 
-	// Header line
-	b.WriteString(" " + grimLabelStyle.Render("THE GRIMOIRE") + "  " + grimVoiceStyle.Render("Knowledge is a shared weapon.") + "\n")
+	// Header line (hide tagline at narrow widths)
+	if m.width >= 50 {
+		b.WriteString(" " + grimLabelStyle.Render("THE GRIMOIRE") + "  " + grimVoiceStyle.Render("Knowledge is a shared weapon.") + "\n")
+	} else {
+		b.WriteString(" " + grimLabelStyle.Render("THE GRIMOIRE") + "\n")
+	}
 
 	// --- Search + mode toggle ---
 	if m.editing {
@@ -381,22 +385,32 @@ func (m grimoireModel) View() string {
 
 	// --- Tag bar + sort (spells mode only) ---
 	if m.mode == grimoireModeSpells {
+		// Sort indicator at the end: "new↑ s" (~8 chars)
+		sortLabel := m.sortBy + "\u2191"
+		sortPart := "   " + searchStyle.Render(sortLabel) + " " + helpKeyStyle.Render("s")
+		sortWidth := lipgloss.Width(sortPart)
+
 		b.WriteString(" ")
+		usedWidth := 1 // leading space
 		for i, tag := range displayTags {
-			if i > 0 {
-				b.WriteString("  ")
+			sep := "  "
+			if i == 0 {
+				sep = ""
 			}
+			needed := len(sep) + len(tag)
+			if usedWidth+needed+sortWidth > m.width {
+				break // don't overflow
+			}
+			b.WriteString(sep)
 			isActive := tag == m.tagFilter
 			if isActive {
 				b.WriteString(TagStyle(tag).Bold(true).Render(tag))
 			} else {
 				b.WriteString(dimStyle.Render(tag))
 			}
+			usedWidth += needed
 		}
-
-		// Sort indicator at the right — matches mockup's margin-left:auto style
-		sortLabel := m.sortBy + "\u2191"
-		b.WriteString("   " + searchStyle.Render(sortLabel) + " " + helpKeyStyle.Render("s"))
+		b.WriteString(sortPart)
 		b.WriteString("\n")
 	}
 
@@ -463,39 +477,54 @@ func (m grimoireModel) viewSpellList() string {
 		// Dot in tag color
 		dot := TagStyle(spell.Tag).Render("●") + " "
 
-		// Right-side columns: author (10), casts (9), potency (3)
-		authorCol := ""
-		if spell.Author != nil {
-			name := spell.Author.Login
-			if spell.Author.DisplayName != "" {
-				name = spell.Author.DisplayName
+		// Right-side columns: responsive based on width.
+		// Wide (>=70): author(12) + casts(11) + potency(3) + gaps(4) = 30
+		// Medium (>=45): casts(11) + potency(3) + gap(2) = 16
+		// Narrow (<45): casts only(8) + gap(1) = 9
+		showAuthor := m.width >= 70
+		compactCasts := m.width < 45
+
+		var rightParts []string
+		rightWidth := 0
+		if showAuthor {
+			authorCol := ""
+			if spell.Author != nil {
+				name := spell.Author.Login
+				if spell.Author.DisplayName != "" {
+					name = spell.Author.DisplayName
+				}
+				if len(name) > 12 {
+					name = name[:11] + "…"
+				}
+				authorCol = GuildStyle(spell.Author.GuildID).Render(fmt.Sprintf("%-12s", name))
+			} else {
+				authorCol = strings.Repeat(" ", 12)
 			}
-			if len(name) > 12 {
-				name = name[:11] + "…"
-			}
-			authorCol = GuildStyle(spell.Author.GuildID).Render(fmt.Sprintf("%-12s", name))
-		} else {
-			authorCol = strings.Repeat(" ", 12)
+			rightParts = append(rightParts, authorCol)
+			rightWidth += 13 // 12 + gap
 		}
-		castCol := metaStyle.Render(fmt.Sprintf("%6d casts", spell.Upvotes))
-		potCol := ""
-		if spell.Potency > 0 {
-			potCol = " " + potencyStyle(spell.Potency).Render(fmt.Sprintf("P%d", spell.Potency))
+		if compactCasts {
+			rightParts = append(rightParts, metaStyle.Render(fmt.Sprintf("%d", spell.Upvotes)+"c"))
+			rightWidth += 5
 		} else {
-			potCol = "   "
+			rightParts = append(rightParts, metaStyle.Render(fmt.Sprintf("%6d casts", spell.Upvotes)))
+			rightWidth += 12
+		}
+		if spell.Potency > 0 {
+			rightParts = append(rightParts, potencyStyle(spell.Potency).Render(fmt.Sprintf("P%d", spell.Potency)))
+			rightWidth += 4
 		}
 
 		// Title fills remaining space
-		rightWidth := 12 + 11 + 3 + 4          // author + casts + potency + gaps
 		titleWidth := m.width - 4 - rightWidth // 4 = cursor(2) + dot(2)
-		if titleWidth < 20 {
-			titleWidth = 20
+		if titleWidth < 10 {
+			titleWidth = 10
 		}
 		title := strings.ReplaceAll(spell.Text, "\n", " ")
 		title = truncStr(title, titleWidth)
 		titlePadded := fmt.Sprintf("%-*s", titleWidth, `"`+title+`"`)
 
-		line := cursor + dot + titleStyle.Render(titlePadded) + " " + authorCol + " " + castCol + potCol
+		line := cursor + dot + titleStyle.Render(titlePadded) + " " + strings.Join(rightParts, " ")
 		if i == m.cursor {
 			padded := line + strings.Repeat(" ", max(m.width-lipgloss.Width(line), 0))
 			b.WriteString(selectedRowBg.Render(padded) + "\n")

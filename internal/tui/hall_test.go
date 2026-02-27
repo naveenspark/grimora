@@ -303,7 +303,7 @@ func TestHallViewLineCount(t *testing.T) {
 		{
 			name: "connecting state (not logged in)",
 			setup: func(m *hallModel) {
-				// fresh model, myLogin="" → no presence line, chrome=1
+				// fresh model, myLogin="" → chrome=1 (input only)
 			},
 			wantLen: 24, // m.height
 		},
@@ -432,24 +432,6 @@ func TestHallCursorVisibleWhenFocused(t *testing.T) {
 		for i, line := range lines {
 			t.Logf("  %2d: %q", i, line)
 		}
-	}
-}
-
-func TestHallPresenceLineShown(t *testing.T) {
-	m := newTestHallModel()
-	m.myLogin = "naveenspark"
-	m.connected = true
-	m.presenceCount = 7
-
-	m.messages = append(m.messages, chatMessage{
-		ID: "msg-1", SenderLogin: "alice", Body: "hi",
-		Kind: "message", CreatedAt: time.Now(),
-	})
-	m.seenIDs["msg-1"] = true
-
-	view := m.View()
-	if !strings.Contains(view, "naveenspark") {
-		t.Error("expected username 'naveenspark' in view")
 	}
 }
 

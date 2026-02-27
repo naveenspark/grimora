@@ -426,6 +426,11 @@ func (a App) View() string {
 		help = " " + helpEntry("j/k", "nav") + "  " + helpEntry("enter", "open") + "  " + helpEntry("esc", "close")
 	}
 
+	// Truncate help bar to fit width (ANSI-safe).
+	if lipgloss.Width(help) > a.width {
+		help = lipgloss.NewStyle().MaxWidth(a.width).Render(help)
+	}
+
 	// Chrome budget: header(2) + tabs(1) + help(1) = 4 lines + body
 	chrome := 4
 	body = strings.TrimRight(truncateToHeight(body, a.height-chrome), "\n")

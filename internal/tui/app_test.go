@@ -314,9 +314,9 @@ func TestAppHallLayoutFitsTerminal(t *testing.T) {
 		t.Error("expected cursor '█' in full app view")
 	}
 
-	// Username must appear (presence line OR stats line)
-	if !strings.Contains(view, "naveenspark") {
-		t.Error("expected username 'naveenspark' in full app view")
+	// Input line must show "you" (self name in input area)
+	if !strings.Contains(view, "you") {
+		t.Error("expected 'you' in full app view (input line)")
 	}
 }
 

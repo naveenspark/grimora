@@ -437,7 +437,7 @@ func (m threadsModel) renderThreadMessage(msg domain.Message) string {
 }
 
 func (m threadsModel) renderConvoInput() string {
-	const timeIndent = "          " // 10 spaces — matches timestamp + gap
+	const timeIndent = "           " // 11 spaces — matches " " + 8-char timestamp + "  "
 
 	sep := chatSepStyle.Render(" · ")
 	namePart := chatSelfNameStyle.Render("you")

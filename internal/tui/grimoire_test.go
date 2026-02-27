@@ -252,8 +252,9 @@ func TestGrimoireInlineTagBarRendered(t *testing.T) {
 	if !strings.Contains(view, "database") {
 		t.Errorf("expected 'database' in inline tag bar, got:\n%s", view)
 	}
-	if !strings.Contains(view, "observability") {
-		t.Errorf("expected 'observability' in inline tag bar, got:\n%s", view)
+	// Tags that don't fit within the width are truncated — only check first few.
+	if !strings.Contains(view, "performance") {
+		t.Errorf("expected 'performance' in inline tag bar, got:\n%s", view)
 	}
 }
 
