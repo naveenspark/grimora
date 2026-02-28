@@ -87,11 +87,51 @@ func truncateToHeight(s string, maxLines int) string {
 	return s
 }
 
+// inputPrefixWidth returns the visual width of the chat input prefix
+// (timeIndent + name + separator) for a given login.
+func inputPrefixWidth(login string) int {
+	const timeIndent = "           " // 11 spaces
+	sep := chatSepStyle.Render(" · ")
+	namePart := renderAnimatedName(login, 0) // frame irrelevant for width
+	return lipgloss.Width(timeIndent + namePart + sep)
+}
+
+// wrapInputLines takes a single logical line and wraps it to fit bodyWidth,
+// using lipgloss word-wrap first, then hardWrap for long tokens.
+// Returns the resulting visual lines.
+func wrapInputLines(line string, bodyWidth int) []string {
+	if bodyWidth <= 0 {
+		return []string{line}
+	}
+	wrapped := lipgloss.NewStyle().Width(bodyWidth).Render(line)
+	wrapped = stripTrailingSpaces(wrapped)
+	wrapped = hardWrap(wrapped, bodyWidth)
+	return strings.Split(wrapped, "\n")
+}
+
+// countInputVisualLines counts how many visual lines the input produces
+// after wrapping to bodyWidth. Used by Hall and Threads chrome calculations.
+func countInputVisualLines(input string, bodyWidth int) int {
+	if bodyWidth <= 0 {
+		return 1 + strings.Count(input, "\n")
+	}
+	count := 0
+	for _, line := range strings.Split(input, "\n") {
+		vlines := wrapInputLines(line, bodyWidth)
+		count += len(vlines)
+	}
+	if count < 1 {
+		count = 1
+	}
+	return count
+}
+
 // renderChatInput renders the shared inline text input used by Hall and Threads.
 // It shows an animated name, cursor blink, and placeholder when empty.
 // Supports multiline input: first line gets the name prefix, continuation lines
-// are indented to align with the message body.
-func renderChatInput(login, input, placeholder string, focused bool, animFrame int) string {
+// are indented to align with the message body. Long lines are word-wrapped
+// and hard-wrapped to fit within the given terminal width.
+func renderChatInput(login, input, placeholder string, focused bool, animFrame int, width int) string {
 	const timeIndent = "           " // 11 spaces — matches " " + 8-char timestamp + "  "
 
 	sep := chatSepStyle.Render(" · ")
@@ -115,17 +155,29 @@ func renderChatInput(login, input, placeholder string, focused bool, animFrame i
 		return timeIndent + namePart + sep + cursor
 	}
 
-	// Multiline: split by newlines, first line gets prefix, rest get indent.
-	lines := strings.Split(input, "\n")
 	prefix := timeIndent + namePart + sep
-	// Continuation indent matches visual width of prefix.
-	contIndent := strings.Repeat(" ", lipgloss.Width(prefix))
+	prefixWidth := lipgloss.Width(prefix)
+	contIndent := strings.Repeat(" ", prefixWidth)
+	bodyWidth := width - prefixWidth
+	if bodyWidth < 10 {
+		bodyWidth = 10
+	}
 
+	// Split by explicit newlines, then wrap each logical line.
+	logicalLines := strings.Split(input, "\n")
 	var b strings.Builder
-	b.WriteString(prefix + chatComposingStyle.Render(lines[0]))
-	for _, line := range lines[1:] {
-		b.WriteByte('\n')
-		b.WriteString(contIndent + chatComposingStyle.Render(line))
+	first := true
+	for _, logLine := range logicalLines {
+		vlines := wrapInputLines(logLine, bodyWidth)
+		for _, vl := range vlines {
+			if first {
+				b.WriteString(prefix + chatComposingStyle.Render(vl))
+				first = false
+			} else {
+				b.WriteByte('\n')
+				b.WriteString(contIndent + chatComposingStyle.Render(vl))
+			}
+		}
 	}
 	b.WriteString(cursor)
 	return b.String()

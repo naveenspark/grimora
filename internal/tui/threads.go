@@ -338,7 +338,11 @@ func (m threadsModel) viewConvo() string {
 	b.WriteString(" " + metaStyle.Render(sep) + "\n")
 
 	// Messages
-	chrome := 4 // header + sep + input + status
+	threadBodyWidth := m.width - inputPrefixWidth(m.myLogin)
+	if threadBodyWidth < 10 {
+		threadBodyWidth = 10
+	}
+	chrome := 3 + countInputVisualLines(m.input, threadBodyWidth) // header + sep + status + visual input lines
 	if m.status != "" {
 		chrome++
 	}
@@ -424,7 +428,7 @@ func (m threadsModel) renderThreadMessage(msg domain.Message) string {
 }
 
 func (m threadsModel) renderConvoInput() string {
-	return renderChatInput(m.myLogin, m.input, "type a message...", m.inputFocused, m.animFrame)
+	return renderChatInput(m.myLogin, m.input, "type a message...", m.inputFocused, m.animFrame, m.width)
 }
 
 func (m threadsModel) helpKeys() string {

@@ -695,7 +695,11 @@ func (m hallModel) View() string {
 	var b strings.Builder
 
 	// Reserve lines: input(1 + extra newlines) + status(0-1) + autocomplete.
-	chrome := 1 + strings.Count(m.input, "\n") // each newline in input steals a viewport line
+	bodyWidth := m.width - inputPrefixWidth(m.myLogin)
+	if bodyWidth < 10 {
+		bodyWidth = 10
+	}
+	chrome := countInputVisualLines(m.input, bodyWidth)
 	if m.status != "" {
 		chrome++
 	}
@@ -980,7 +984,7 @@ func (m hallModel) renderInput() string {
 	if m.myLogin == "" {
 		placeholder = "grimora login to chat"
 	}
-	return renderChatInput(m.myLogin, m.input, placeholder, m.inputFocused, m.animFrame)
+	return renderChatInput(m.myLogin, m.input, placeholder, m.inputFocused, m.animFrame, m.width)
 }
 
 // slashCommands defines the available slash commands and their descriptions.

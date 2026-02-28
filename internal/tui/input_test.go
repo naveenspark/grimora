@@ -250,7 +250,7 @@ func TestEditRuneShiftEnterIgnored(t *testing.T) {
 
 func TestRenderChatInputMultiline(t *testing.T) {
 	// Multiline input should render continuation lines indented.
-	result := renderChatInput("testuser", "line1\nline2", "placeholder", true, 0)
+	result := renderChatInput("testuser", "line1\nline2", "placeholder", true, 0, 80)
 	if !strings.Contains(result, "line1") || !strings.Contains(result, "line2") {
 		t.Errorf("multiline input missing lines: %q", result)
 	}
@@ -262,11 +262,46 @@ func TestRenderChatInputMultiline(t *testing.T) {
 
 func TestRenderChatInputUnfocusedMultilineCollapse(t *testing.T) {
 	// When unfocused, multiline input shows first line with ellipsis.
-	result := renderChatInput("testuser", "line1\nline2\nline3", "placeholder", false, 0)
+	result := renderChatInput("testuser", "line1\nline2\nline3", "placeholder", false, 0, 80)
 	if !strings.Contains(result, "line1") {
 		t.Errorf("unfocused multiline should show first line: %q", result)
 	}
 	if strings.Contains(result, "line2") {
 		t.Errorf("unfocused multiline should NOT show continuation lines: %q", result)
+	}
+}
+
+func TestRenderChatInputWrapsLongLine(t *testing.T) {
+	// A single long line should wrap to multiple visual lines.
+	longInput := strings.Repeat("abcdefghij ", 10) // ~110 chars
+	result := renderChatInput("testuser", longInput, "placeholder", true, 0, 60)
+	newlines := strings.Count(result, "\n")
+	if newlines < 1 {
+		t.Errorf("long input should wrap to multiple lines, got 0 newlines: %q", result)
+	}
+}
+
+func TestCountInputVisualLines(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		bodyWidth int
+		wantMin   int
+		wantMax   int
+	}{
+		{"empty", "", 60, 1, 1},
+		{"short single line", "hello", 60, 1, 1},
+		{"two explicit newlines", "line1\nline2", 60, 2, 2},
+		{"long wraps", strings.Repeat("x", 120), 60, 2, 3},
+		{"mixed newlines and wrapping", "short\n" + strings.Repeat("y", 120), 60, 3, 4},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := countInputVisualLines(tc.input, tc.bodyWidth)
+			if got < tc.wantMin || got > tc.wantMax {
+				t.Errorf("countInputVisualLines(%q, %d) = %d, want [%d, %d]",
+					tc.input, tc.bodyWidth, got, tc.wantMin, tc.wantMax)
+			}
+		})
 	}
 }
