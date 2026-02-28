@@ -1,6 +1,32 @@
 package tui
 
-import "unicode/utf8"
+import (
+	"strings"
+	"unicode/utf8"
+)
+
+// namedKeys is the set of Bubbletea key names that are multi-character
+// strings composed of printable ASCII. These must not be treated as paste.
+var namedKeys = map[string]bool{
+	"enter": true, "return": true, "tab": true, "esc": true, "escape": true,
+	"space": true, "up": true, "down": true, "left": true, "right": true,
+	"home": true, "end": true, "pgup": true, "pgdown": true,
+	"delete": true, "insert": true,
+	"f1": true, "f2": true, "f3": true, "f4": true, "f5": true,
+	"f6": true, "f7": true, "f8": true, "f9": true, "f10": true,
+	"f11": true, "f12": true, "f13": true, "f14": true, "f15": true,
+	"f16": true, "f17": true, "f18": true, "f19": true, "f20": true,
+}
+
+func isNamedKey(key string) bool {
+	if namedKeys[key] {
+		return true
+	}
+	if strings.HasPrefix(key, "ctrl+") || strings.HasPrefix(key, "alt+") || strings.HasPrefix(key, "shift+") {
+		return true
+	}
+	return false
+}
 
 // pageSize is the default number of items fetched per API call.
 const pageSize = 50
@@ -9,8 +35,8 @@ const pageSize = 50
 const maxInputLen = 2000
 
 // editRune processes a keystroke for inline text editing.
-// Handles backspace (rune-aware) and single printable characters.
-// Returns the text unchanged for non-printable keys (enter, esc, etc.).
+// Handles backspace (rune-aware), single printable characters, and multi-rune
+// paste strings. Returns the text unchanged for non-printable keys (enter, esc, etc.).
 // Input is clamped to maxInputLen runes.
 func editRune(text string, key string) string {
 	switch key {
@@ -21,13 +47,23 @@ func editRune(text string, key string) string {
 		}
 		return text
 	default:
-		if utf8.RuneCountInString(key) == 1 {
-			if utf8.RuneCountInString(text) >= maxInputLen {
-				return text
-			}
-			return text + key
+		keyLen := utf8.RuneCountInString(key)
+		if keyLen < 1 || isNamedKey(key) {
+			return text
 		}
-		return text
+		textLen := utf8.RuneCountInString(text)
+		if textLen >= maxInputLen {
+			return text
+		}
+		// Clamp paste to remaining capacity.
+		if keyLen > 1 {
+			remaining := maxInputLen - textLen
+			if keyLen > remaining {
+				runes := []rune(key)
+				key = string(runes[:remaining])
+			}
+		}
+		return text + key
 	}
 }
 

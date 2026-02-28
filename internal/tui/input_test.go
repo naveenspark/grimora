@@ -130,6 +130,32 @@ func TestEditRuneBackspaceEmoji(t *testing.T) {
 	}
 }
 
+func TestEditRunePaste(t *testing.T) {
+	tests := []struct {
+		name  string
+		start string
+		key   string
+		want  string
+	}{
+		{"paste into empty", "", "hello world", "hello world"},
+		{"paste appends", "hi ", "there", "hi there"},
+		{"paste with special chars", "", "curl -fsSL https://grimora.ai/install.sh | sh", "curl -fsSL https://grimora.ai/install.sh | sh"},
+		{"paste clamped at limit", strings.Repeat("a", maxInputLen-3), "abcdef", strings.Repeat("a", maxInputLen-3) + "abc"},
+		{"paste rejected at limit", strings.Repeat("a", maxInputLen), "hello", strings.Repeat("a", maxInputLen)},
+		{"named keys still ignored", "hello", "enter", "hello"},
+		{"ctrl combos still ignored", "hello", "ctrl+c", "hello"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := editRune(tc.start, tc.key)
+			if got != tc.want {
+				t.Errorf("editRune(%q, %q) = %q, want %q", tc.start, tc.key, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestEditRuneMaxInputLen(t *testing.T) {
 	atLimit := strings.Repeat("a", maxInputLen)         // 2000 ASCII runes
 	belowLimit := strings.Repeat("a", maxInputLen-1)    // 1999 ASCII runes
