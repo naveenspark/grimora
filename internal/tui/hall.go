@@ -349,6 +349,27 @@ func (m hallModel) Update(msg tea.Msg) (hallModel, tea.Cmd) {
 
 	case hallPresenceMsg:
 		if msg.err == nil {
+			// Diff presence to show join/leave system messages (skip first load)
+			if m.presenceLogins != nil {
+				oldSet := make(map[string]bool, len(m.presenceLogins))
+				for _, l := range m.presenceLogins {
+					oldSet[l] = true
+				}
+				newSet := make(map[string]bool, len(msg.logins))
+				for _, l := range msg.logins {
+					newSet[l] = true
+				}
+				for _, l := range msg.logins {
+					if !oldSet[l] && l != m.myLogin {
+						m.messages = append(m.messages, chatMessage{IsSystem: true, Body: l + " joined"})
+					}
+				}
+				for _, l := range m.presenceLogins {
+					if !newSet[l] && l != m.myLogin {
+						m.messages = append(m.messages, chatMessage{IsSystem: true, Body: l + " left"})
+					}
+				}
+			}
 			m.presenceCount = msg.count
 			m.presenceLogins = msg.logins
 		}
@@ -847,7 +868,10 @@ func (m hallModel) renderPlainMessage(msg chatMessage) string {
 		return chatTextStyle.Render(highlighted)
 	}
 
-	bodyWidth := m.width - 26
+	// Compute prefix: " " + time + "  " + name + " · "
+	// Visual width = 1 + 8 + 2 + len(name) + 3
+	prefixWidth := 1 + 8 + 2 + lipgloss.Width(namePart) + 3
+	bodyWidth := m.width - prefixWidth
 	if bodyWidth < 20 {
 		bodyWidth = 20
 	}
@@ -856,7 +880,7 @@ func (m hallModel) renderPlainMessage(msg chatMessage) string {
 
 	result := " " + timePart + "  " + namePart + sep + renderBody(lines[0])
 	if len(lines) > 1 {
-		indent := strings.Repeat(" ", 15)
+		indent := strings.Repeat(" ", prefixWidth)
 		for _, line := range lines[1:] {
 			result += "\n" + indent + renderBody(line)
 		}
@@ -906,7 +930,9 @@ func (m hallModel) renderForgeVerdict(msg chatMessage) string {
 // renderCast renders a compact Grimoire cast line.
 func (m hallModel) renderCast(msg chatMessage) string {
 	label := grimLabelStyle.Render("Grimoire:")
-	bodyWidth := m.width - 16
+	// Prefix: " " + "✦" + " " + "Grimoire:" + " " = 1+1+1+9+1 = 13 visual
+	prefixWidth := 1 + 1 + 1 + lipgloss.Width(label) + 1
+	bodyWidth := m.width - prefixWidth
 	if bodyWidth < 20 {
 		bodyWidth = 20
 	}
@@ -914,7 +940,7 @@ func (m hallModel) renderCast(msg chatMessage) string {
 	lines := strings.Split(wrapped, "\n")
 	result := " " + castStyle.Render("✦") + " " + label + " " + grimVoiceStyle.Render(lines[0])
 	if len(lines) > 1 {
-		indent := strings.Repeat(" ", 15)
+		indent := strings.Repeat(" ", prefixWidth)
 		for _, line := range lines[1:] {
 			result += "\n" + indent + grimVoiceStyle.Render(line)
 		}

@@ -399,7 +399,9 @@ func (m threadsModel) renderThreadMessage(msg domain.Message) string {
 		namePart = GuildStyle(m.openThreadGuild).Render(msg.SenderLogin)
 	}
 
-	bodyWidth := m.width - 26
+	// Prefix: " " + time(8) + "  " + name + " · "
+	prefixWidth := 1 + 8 + 2 + lipgloss.Width(namePart) + 3
+	bodyWidth := m.width - prefixWidth
 	if bodyWidth < 20 {
 		bodyWidth = 20
 	}
@@ -413,7 +415,7 @@ func (m threadsModel) renderThreadMessage(msg domain.Message) string {
 
 	result := " " + timePart + "  " + namePart + sep + bodyStyle.Render(lines[0])
 	if len(lines) > 1 {
-		indent := strings.Repeat(" ", 15)
+		indent := strings.Repeat(" ", prefixWidth)
 		for _, line := range lines[1:] {
 			result += "\n" + indent + bodyStyle.Render(line)
 		}
