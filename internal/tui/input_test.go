@@ -233,3 +233,40 @@ func TestTruncateToHeightExactLimit(t *testing.T) {
 		t.Errorf("truncateToHeight at exact limit dropped lines: %q", result)
 	}
 }
+
+func TestEditRuneShiftEnterIgnored(t *testing.T) {
+	// editRune should NOT insert a newline for shift+enter — that's handled
+	// in hall.go's updateInput, not editRune. editRune sees it as a named key.
+	keys := []string{"shift+enter", "alt+enter"}
+	for _, key := range keys {
+		t.Run(key, func(t *testing.T) {
+			got := editRune("hello", key)
+			if got != "hello" {
+				t.Errorf("editRune(%q, %q) = %q, want unchanged", "hello", key, got)
+			}
+		})
+	}
+}
+
+func TestRenderChatInputMultiline(t *testing.T) {
+	// Multiline input should render continuation lines indented.
+	result := renderChatInput("testuser", "line1\nline2", "placeholder", true, 0)
+	if !strings.Contains(result, "line1") || !strings.Contains(result, "line2") {
+		t.Errorf("multiline input missing lines: %q", result)
+	}
+	// Should contain a newline (multi-line rendering).
+	if !strings.Contains(result, "\n") {
+		t.Errorf("multiline input should produce newlines in output: %q", result)
+	}
+}
+
+func TestRenderChatInputUnfocusedMultilineCollapse(t *testing.T) {
+	// When unfocused, multiline input shows first line with ellipsis.
+	result := renderChatInput("testuser", "line1\nline2\nline3", "placeholder", false, 0)
+	if !strings.Contains(result, "line1") {
+		t.Errorf("unfocused multiline should show first line: %q", result)
+	}
+	if strings.Contains(result, "line2") {
+		t.Errorf("unfocused multiline should NOT show continuation lines: %q", result)
+	}
+}

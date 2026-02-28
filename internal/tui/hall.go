@@ -20,6 +20,9 @@ import (
 // mentionRe matches @word patterns in message text.
 var mentionRe = regexp.MustCompile(`@(\w+)`)
 
+// urlRe matches http/https URLs in message text.
+var urlRe = regexp.MustCompile(`https?://[^\s<>\[\]()]+`)
+
 // hallPollInterval is how often the Hall polls for new messages.
 const hallPollInterval = 3 * time.Second
 
@@ -605,6 +608,12 @@ func (m hallModel) updateInput(msg tea.KeyMsg) (hallModel, tea.Cmd) {
 		m.status = ""
 		return m, nil
 
+	case "shift+enter", "alt+enter":
+		if utf8.RuneCountInString(m.input) < maxInputLen {
+			m.input += "\n"
+		}
+		return m, nil
+
 	case "enter":
 		body := strings.TrimSpace(m.input)
 		if body == "" {
@@ -682,8 +691,8 @@ func (m hallModel) updateNav(msg tea.KeyMsg) (hallModel, tea.Cmd) {
 func (m hallModel) View() string {
 	var b strings.Builder
 
-	// Reserve lines: input(1) + status(0-1) + autocomplete.
-	chrome := 1 // input
+	// Reserve lines: input(1 + extra newlines) + status(0-1) + autocomplete.
+	chrome := 1 + strings.Count(m.input, "\n") // each newline in input steals a viewport line
 	if m.status != "" {
 		chrome++
 	}
@@ -875,7 +884,7 @@ func (m hallModel) renderPlainMessage(msg chatMessage) string {
 	if bodyWidth < 20 {
 		bodyWidth = 20
 	}
-	wrapped := lipgloss.NewStyle().Width(bodyWidth).Render(msg.Body)
+	wrapped := hardWrap(lipgloss.NewStyle().Width(bodyWidth).Render(msg.Body), bodyWidth)
 	lines := strings.Split(wrapped, "\n")
 
 	result := " " + timePart + "  " + namePart + sep + renderBody(lines[0])
@@ -936,7 +945,7 @@ func (m hallModel) renderCast(msg chatMessage) string {
 	if bodyWidth < 20 {
 		bodyWidth = 20
 	}
-	wrapped := lipgloss.NewStyle().Width(bodyWidth).Render(msg.Body)
+	wrapped := hardWrap(lipgloss.NewStyle().Width(bodyWidth).Render(msg.Body), bodyWidth)
 	lines := strings.Split(wrapped, "\n")
 	result := " " + castStyle.Render("✦") + " " + label + " " + grimVoiceStyle.Render(lines[0])
 	if len(lines) > 1 {
@@ -1136,9 +1145,11 @@ func (m hallModel) filterLogins(query string) []string {
 	return matches
 }
 
-// renderBodyWithMentions highlights @mentions in message body text.
-// Self-mentions get extra bright styling.
+// renderBodyWithMentions highlights @mentions and linkifies URLs in message body text.
+// Self-mentions get extra bright styling. URLs become clickable OSC 8 hyperlinks.
 func renderBodyWithMentions(body, myLogin string, isSelf bool) string {
+	// Linkify URLs first (OSC 8 sequences are zero-width in terminals that support them).
+	body = urlRe.ReplaceAllStringFunc(body, hyperlinkOSC8)
 	return mentionRe.ReplaceAllStringFunc(body, func(match string) string {
 		login := match[1:] // strip leading @
 		if strings.EqualFold(login, myLogin) {
@@ -1146,4 +1157,41 @@ func renderBodyWithMentions(body, myLogin string, isSelf bool) string {
 		}
 		return mentionStyle.Render(match)
 	})
+}
+
+// hyperlinkOSC8 wraps a URL in OSC 8 escape sequences for clickable terminal hyperlinks.
+// Format: ESC ] 8 ; ; URL BEL display-text ESC ] 8 ; ; BEL
+func hyperlinkOSC8(url string) string {
+	return "\033]8;;" + url + "\a" + url + "\033]8;;\a"
+}
+
+// hardWrap scans each line and hard-breaks any that exceed width at the rune boundary.
+// This handles long tokens (like URLs) that lipgloss word-wrap can't break.
+func hardWrap(s string, width int) string {
+	if width <= 0 {
+		return s
+	}
+	lines := strings.Split(s, "\n")
+	var result []string
+	for _, line := range lines {
+		if lipgloss.Width(line) <= width {
+			result = append(result, line)
+			continue
+		}
+		// Hard-break at rune boundaries.
+		runes := []rune(line)
+		for len(runes) > 0 {
+			// Find how many runes fit in width.
+			end := len(runes)
+			for end > 0 && lipgloss.Width(string(runes[:end])) > width {
+				end--
+			}
+			if end == 0 {
+				end = 1 // at least one rune per line to avoid infinite loop
+			}
+			result = append(result, string(runes[:end]))
+			runes = runes[end:]
+		}
+	}
+	return strings.Join(result, "\n")
 }

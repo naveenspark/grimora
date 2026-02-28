@@ -3,6 +3,8 @@ package tui
 import (
 	"strings"
 	"unicode/utf8"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 // namedKeys is the set of Bubbletea key names that are multi-character
@@ -87,6 +89,8 @@ func truncateToHeight(s string, maxLines int) string {
 
 // renderChatInput renders the shared inline text input used by Hall and Threads.
 // It shows an animated name, cursor blink, and placeholder when empty.
+// Supports multiline input: first line gets the name prefix, continuation lines
+// are indented to align with the message body.
 func renderChatInput(login, input, placeholder string, focused bool, animFrame int) string {
 	const timeIndent = "           " // 11 spaces — matches " " + 8-char timestamp + "  "
 
@@ -96,7 +100,12 @@ func renderChatInput(login, input, placeholder string, focused bool, animFrame i
 		if input == "" {
 			return timeIndent + namePart + sep + inputPlaceholderStyle.Render(placeholder)
 		}
-		return timeIndent + namePart + sep + dimStyle.Render(input)
+		// Show first line only when unfocused (multiline collapses)
+		firstLine := input
+		if idx := strings.IndexByte(input, '\n'); idx >= 0 {
+			firstLine = input[:idx] + "…"
+		}
+		return timeIndent + namePart + sep + dimStyle.Render(firstLine)
 	}
 	cursor := " "
 	if (animFrame/4)%2 == 0 {
@@ -105,5 +114,19 @@ func renderChatInput(login, input, placeholder string, focused bool, animFrame i
 	if input == "" {
 		return timeIndent + namePart + sep + cursor
 	}
-	return timeIndent + namePart + sep + chatComposingStyle.Render(input) + cursor
+
+	// Multiline: split by newlines, first line gets prefix, rest get indent.
+	lines := strings.Split(input, "\n")
+	prefix := timeIndent + namePart + sep
+	// Continuation indent matches visual width of prefix.
+	contIndent := strings.Repeat(" ", lipgloss.Width(prefix))
+
+	var b strings.Builder
+	b.WriteString(prefix + chatComposingStyle.Render(lines[0]))
+	for _, line := range lines[1:] {
+		b.WriteByte('\n')
+		b.WriteString(contIndent + chatComposingStyle.Render(line))
+	}
+	b.WriteString(cursor)
+	return b.String()
 }

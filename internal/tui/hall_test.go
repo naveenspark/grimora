@@ -435,6 +435,126 @@ func TestHallCursorVisibleWhenFocused(t *testing.T) {
 	}
 }
 
+func TestHallInputMultilineNewlineInModel(t *testing.T) {
+	// Verify that when m.input contains newlines (from shift+enter),
+	// the model correctly adjusts viewport and renders without clipping.
+	m := newTestHallModel()
+	m.myLogin = "testuser"
+	m.inputFocused = true
+	m.connected = true
+
+	// Simulate shift+enter by directly adding newline (the switch case does m.input += "\n").
+	m.input = "first line\nsecond line"
+
+	// Verify input has a newline.
+	if !strings.Contains(m.input, "\n") {
+		t.Fatal("expected newline in input")
+	}
+
+	// Verify View() still produces correct line count.
+	view := m.View()
+	newlines := strings.Count(view, "\n")
+	if newlines != m.height {
+		t.Errorf("View() with multiline input has %d newlines, want %d", newlines, m.height)
+	}
+
+	// Verify both lines appear in the rendered output.
+	if !strings.Contains(view, "first line") || !strings.Contains(view, "second line") {
+		t.Errorf("multiline input not fully rendered: %q", view)
+	}
+}
+
+func TestHallViewLineCountWithMultilineInput(t *testing.T) {
+	m := newTestHallModel()
+	m.myLogin = "naveenspark"
+	m.connected = true
+	m.input = "line1\nline2" // 2-line input
+	m.animFrame = 0
+	for i := 0; i < 5; i++ {
+		id := fmt.Sprintf("msg-%d", i)
+		m.seenIDs[id] = true
+		m.messages = append(m.messages, chatMessage{
+			ID: id, SenderLogin: "alice", Body: "hi",
+			Kind: "message", CreatedAt: time.Now(),
+		})
+	}
+
+	view := m.View()
+	newlines := strings.Count(view, "\n")
+	if newlines != m.height {
+		t.Errorf("View() with 2-line input has %d newlines, want %d", newlines, m.height)
+		lines := strings.Split(view, "\n")
+		for i, line := range lines {
+			t.Logf("  %2d: %q", i, line)
+		}
+	}
+}
+
+func TestHardWrapBreaksLongURLs(t *testing.T) {
+	url := "https://github.com/naveenspark/grimora/releases/tag/v0.4.0-this-is-a-very-long-url-that-exceeds-width"
+	wrapped := hardWrap(url, 40)
+	for _, line := range strings.Split(wrapped, "\n") {
+		runes := []rune(line)
+		if len(runes) > 40 {
+			t.Errorf("hardWrap produced line with %d runes (>40): %q", len(runes), line)
+		}
+	}
+	// Should contain the full URL content (no truncation).
+	joined := strings.ReplaceAll(wrapped, "\n", "")
+	if joined != url {
+		t.Errorf("hardWrap lost content: got %q, want %q", joined, url)
+	}
+}
+
+func TestHardWrapShortLinesUnchanged(t *testing.T) {
+	input := "short line"
+	got := hardWrap(input, 40)
+	if got != input {
+		t.Errorf("hardWrap changed short line: got %q, want %q", got, input)
+	}
+}
+
+func TestHyperlinkOSC8(t *testing.T) {
+	url := "https://grimora.ai"
+	got := hyperlinkOSC8(url)
+	want := "\033]8;;" + url + "\a" + url + "\033]8;;\a"
+	if got != want {
+		t.Errorf("hyperlinkOSC8(%q) = %q, want %q", url, got, want)
+	}
+}
+
+func TestRenderBodyWithMentionsLinkifiesURLs(t *testing.T) {
+	body := "check https://grimora.ai for details"
+	result := renderBodyWithMentions(body, "me", false)
+	// Should contain OSC 8 escape sequences.
+	if !strings.Contains(result, "\033]8;;") {
+		t.Errorf("expected OSC 8 hyperlink in rendered body, got: %q", result)
+	}
+	if !strings.Contains(result, "https://grimora.ai") {
+		t.Errorf("expected URL preserved in rendered body, got: %q", result)
+	}
+}
+
+func TestLongURLMessageWraps(t *testing.T) {
+	m := newTestHallModel()
+	m.myLogin = "me"
+	m.width = 60
+
+	msg := chatMessage{
+		ID:          "url-1",
+		SenderLogin: "alice",
+		Body:        "https://github.com/naveenspark/grimora/releases/tag/v0.4.0-with-extra-long-path-that-exceeds-terminal",
+		Kind:        "message",
+		CreatedAt:   time.Now(),
+	}
+
+	rendered := m.renderMessage(msg)
+	// Should contain newlines from wrapping.
+	if !strings.Contains(rendered, "\n") {
+		t.Errorf("long URL message should wrap, got single line: %q", rendered)
+	}
+}
+
 // testErr is a simple error type for tests.
 type testErr struct{ msg string }
 
