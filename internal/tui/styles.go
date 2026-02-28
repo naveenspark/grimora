@@ -225,6 +225,15 @@ var (
 	chatSysStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#404858"))
 
+	// Join announcement styles
+	joinLabelStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#ffd700")).
+			Bold(true)
+
+	joinDetailStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#606878")).
+			Italic(true)
+
 	presenceTitleStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#8890a0")).
 				Bold(true)

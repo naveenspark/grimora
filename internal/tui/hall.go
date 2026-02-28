@@ -844,6 +844,8 @@ func (m hallModel) renderMessage(msg chatMessage) string {
 		return m.renderForgeVerdict(msg)
 	case "cast":
 		return m.renderCast(msg)
+	case "join":
+		return m.renderJoin(msg)
 	}
 
 	// Default: plain message
@@ -964,6 +966,24 @@ func (m hallModel) renderCast(msg chatMessage) string {
 		}
 	}
 	return result
+}
+
+// renderJoin renders a join announcement with guild-colored name and gold accent.
+func (m hallModel) renderJoin(msg chatMessage) string {
+	guild := msg.Metadata["guild"]
+	archetype := msg.Metadata["archetype"]
+	nameStyle := GuildStyle(guild)
+	label := joinLabelStyle.Render("✦ a new soul enters")
+	name := nameStyle.Render(msg.SenderLogin)
+	line := " " + label + "  " + name
+	if guild != "" {
+		detail := guild
+		if archetype != "" {
+			detail += " · " + archetype
+		}
+		line += "  " + joinDetailStyle.Render(detail)
+	}
+	return line
 }
 
 // potencyFromStr converts a string potency to int, defaulting to 1.
