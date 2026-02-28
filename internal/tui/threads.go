@@ -338,7 +338,7 @@ func (m threadsModel) viewConvo() string {
 	b.WriteString(" " + metaStyle.Render(sep) + "\n")
 
 	// Messages
-	threadBodyWidth := m.width - inputPrefixWidth(m.myLogin)
+	threadBodyWidth := m.width - inputPrefixWidth(m.myLogin) - 1 // -1 for cursor
 	if threadBodyWidth < 10 {
 		threadBodyWidth = 10
 	}

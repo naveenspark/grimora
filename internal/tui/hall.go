@@ -695,7 +695,7 @@ func (m hallModel) View() string {
 	var b strings.Builder
 
 	// Reserve lines: input(1 + extra newlines) + status(0-1) + autocomplete.
-	bodyWidth := m.width - inputPrefixWidth(m.myLogin)
+	bodyWidth := m.width - inputPrefixWidth(m.myLogin) - 1 // -1 for cursor
 	if bodyWidth < 10 {
 		bodyWidth = 10
 	}

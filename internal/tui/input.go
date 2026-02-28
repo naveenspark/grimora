@@ -158,7 +158,7 @@ func renderChatInput(login, input, placeholder string, focused bool, animFrame i
 	prefix := timeIndent + namePart + sep
 	prefixWidth := lipgloss.Width(prefix)
 	contIndent := strings.Repeat(" ", prefixWidth)
-	bodyWidth := width - prefixWidth
+	bodyWidth := width - prefixWidth - 1 // -1 reserves a column for the cursor
 	if bodyWidth < 10 {
 		bodyWidth = 10
 	}
