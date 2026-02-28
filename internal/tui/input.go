@@ -165,11 +165,22 @@ func renderChatInput(login, input, placeholder string, focused bool, animFrame i
 
 	// Split by explicit newlines, then wrap each logical line.
 	logicalLines := strings.Split(input, "\n")
+	lastLogIdx := len(logicalLines) - 1
 	var b strings.Builder
 	first := true
-	for _, logLine := range logicalLines {
+	for i, logLine := range logicalLines {
 		vlines := wrapInputLines(logLine, bodyWidth)
-		for _, vl := range vlines {
+		lastVIdx := len(vlines) - 1
+		for j, vl := range vlines {
+			// stripTrailingSpaces in wrapInputLines removes lipgloss padding
+			// but also eats the user's trailing spaces. Restore them on the
+			// very last visual line so the cursor sits after the space.
+			if i == lastLogIdx && j == lastVIdx {
+				trimmed := strings.TrimRight(logLine, " ")
+				if trailing := logLine[len(trimmed):]; len(trailing) > 0 {
+					vl = strings.TrimRight(vl, " ") + trailing
+				}
+			}
 			if first {
 				b.WriteString(prefix + chatComposingStyle.Render(vl))
 				first = false

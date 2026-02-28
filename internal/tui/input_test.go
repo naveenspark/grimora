@@ -281,6 +281,21 @@ func TestRenderChatInputWrapsLongLine(t *testing.T) {
 	}
 }
 
+func TestRenderChatInputPreservesTrailingSpace(t *testing.T) {
+	// Trailing spaces must be visible so the cursor sits after them.
+	// Use animFrame=1 so cursor is a plain space (not █) for easier assertion.
+	result := renderChatInput("testuser", "hello ", "placeholder", true, 2, 80)
+	// The rendered output should contain "hello " (with space) before the cursor.
+	if !strings.Contains(result, "hello ") {
+		t.Errorf("trailing space lost in render: %q", result)
+	}
+	// Multiple trailing spaces
+	result2 := renderChatInput("testuser", "hello   ", "placeholder", true, 2, 80)
+	if !strings.Contains(result2, "hello   ") {
+		t.Errorf("multiple trailing spaces lost in render: %q", result2)
+	}
+}
+
 func TestCountInputVisualLines(t *testing.T) {
 	tests := []struct {
 		name      string
