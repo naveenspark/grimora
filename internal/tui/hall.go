@@ -23,6 +23,9 @@ var mentionRe = regexp.MustCompile(`@(\w+)`)
 // urlRe matches http/https URLs in message text.
 var urlRe = regexp.MustCompile(`https?://[^\s<>\[\]()]+`)
 
+// osc8Re matches OSC 8 hyperlink sequences (ESC]8;;...BEL...ESC]8;;BEL).
+var osc8Re = regexp.MustCompile("\033\\]8;;[^\a]*\a[^\a]*\033\\]8;;\a")
+
 // hallPollInterval is how often the Hall polls for new messages.
 const hallPollInterval = 3 * time.Second
 
@@ -884,7 +887,8 @@ func (m hallModel) renderPlainMessage(msg chatMessage) string {
 	if bodyWidth < 20 {
 		bodyWidth = 20
 	}
-	wrapped := hardWrap(lipgloss.NewStyle().Width(bodyWidth).Render(msg.Body), bodyWidth)
+	linkified := linkifyURLs(msg.Body, bodyWidth)
+	wrapped := hardWrap(stripTrailingSpaces(lipgloss.NewStyle().Width(bodyWidth).Render(linkified)), bodyWidth)
 	lines := strings.Split(wrapped, "\n")
 
 	result := " " + timePart + "  " + namePart + sep + renderBody(lines[0])
@@ -945,7 +949,8 @@ func (m hallModel) renderCast(msg chatMessage) string {
 	if bodyWidth < 20 {
 		bodyWidth = 20
 	}
-	wrapped := hardWrap(lipgloss.NewStyle().Width(bodyWidth).Render(msg.Body), bodyWidth)
+	linkified := linkifyURLs(msg.Body, bodyWidth)
+	wrapped := hardWrap(stripTrailingSpaces(lipgloss.NewStyle().Width(bodyWidth).Render(linkified)), bodyWidth)
 	lines := strings.Split(wrapped, "\n")
 	result := " " + castStyle.Render("✦") + " " + label + " " + grimVoiceStyle.Render(lines[0])
 	if len(lines) > 1 {
@@ -1145,24 +1150,61 @@ func (m hallModel) filterLogins(query string) []string {
 	return matches
 }
 
-// renderBodyWithMentions highlights @mentions and linkifies URLs in message body text.
-// Self-mentions get extra bright styling. URLs become clickable OSC 8 hyperlinks.
+// renderBodyWithMentions highlights @mentions in message body text.
+// Self-mentions get extra bright styling. URL linkification is done earlier in the pipeline.
+// OSC 8 escape sequences are preserved — mentions inside hyperlinks are not styled.
 func renderBodyWithMentions(body, myLogin string, isSelf bool) string {
-	// Linkify URLs first (OSC 8 sequences are zero-width in terminals that support them).
-	body = urlRe.ReplaceAllStringFunc(body, hyperlinkOSC8)
-	return mentionRe.ReplaceAllStringFunc(body, func(match string) string {
-		login := match[1:] // strip leading @
-		if strings.EqualFold(login, myLogin) {
-			return mentionSelfStyle.Render(match)
+	styleMention := func(s string) string {
+		return mentionRe.ReplaceAllStringFunc(s, func(match string) string {
+			login := match[1:] // strip leading @
+			if strings.EqualFold(login, myLogin) {
+				return mentionSelfStyle.Render(match)
+			}
+			return mentionStyle.Render(match)
+		})
+	}
+	// Split around OSC 8 sequences so we don't corrupt them with mention styling.
+	parts := osc8Re.FindAllStringIndex(body, -1)
+	if len(parts) == 0 {
+		return styleMention(body)
+	}
+	var b strings.Builder
+	prev := 0
+	for _, loc := range parts {
+		b.WriteString(styleMention(body[prev:loc[0]]))
+		b.WriteString(body[loc[0]:loc[1]])
+		prev = loc[1]
+	}
+	b.WriteString(styleMention(body[prev:]))
+	return b.String()
+}
+
+// linkifyURLs replaces URLs in body with OSC 8 hyperlinks.
+// If a URL's display text would exceed maxWidth, the display is truncated with "…"
+// while the full URL remains the OSC 8 target (so clicking still opens it).
+func linkifyURLs(body string, maxWidth int) string {
+	if maxWidth <= 0 {
+		return body
+	}
+	return urlRe.ReplaceAllStringFunc(body, func(rawURL string) string {
+		runes := []rune(rawURL)
+		if len(runes) <= maxWidth {
+			return "\033]8;;" + rawURL + "\a" + rawURL + "\033]8;;\a"
 		}
-		return mentionStyle.Render(match)
+		// Truncate display text to maxWidth-1 runes + ellipsis.
+		display := string(runes[:maxWidth-1]) + "…"
+		return "\033]8;;" + rawURL + "\a" + display + "\033]8;;\a"
 	})
 }
 
-// hyperlinkOSC8 wraps a URL in OSC 8 escape sequences for clickable terminal hyperlinks.
-// Format: ESC ] 8 ; ; URL BEL display-text ESC ] 8 ; ; BEL
-func hyperlinkOSC8(url string) string {
-	return "\033]8;;" + url + "\a" + url + "\033]8;;\a"
+// stripTrailingSpaces removes trailing spaces from each line.
+// lipgloss Width() pads lines with trailing spaces — strip them for cleaner output.
+func stripTrailingSpaces(s string) string {
+	lines := strings.Split(s, "\n")
+	for i, line := range lines {
+		lines[i] = strings.TrimRight(line, " ")
+	}
+	return strings.Join(lines, "\n")
 }
 
 // hardWrap scans each line and hard-breaks any that exceed width at the rune boundary.

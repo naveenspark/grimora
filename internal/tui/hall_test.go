@@ -514,44 +514,97 @@ func TestHardWrapShortLinesUnchanged(t *testing.T) {
 	}
 }
 
-func TestHyperlinkOSC8(t *testing.T) {
-	url := "https://grimora.ai"
-	got := hyperlinkOSC8(url)
-	want := "\033]8;;" + url + "\a" + url + "\033]8;;\a"
-	if got != want {
-		t.Errorf("hyperlinkOSC8(%q) = %q, want %q", url, got, want)
-	}
-}
-
-func TestRenderBodyWithMentionsLinkifiesURLs(t *testing.T) {
+func TestRenderBodyWithMentionsNoLinkification(t *testing.T) {
+	// Linkification is now done in linkifyURLs, not renderBodyWithMentions.
 	body := "check https://grimora.ai for details"
 	result := renderBodyWithMentions(body, "me", false)
-	// Should contain OSC 8 escape sequences.
-	if !strings.Contains(result, "\033]8;;") {
-		t.Errorf("expected OSC 8 hyperlink in rendered body, got: %q", result)
+	if strings.Contains(result, "\033]8;;") {
+		t.Errorf("renderBodyWithMentions should not add OSC 8 links, got: %q", result)
 	}
 	if !strings.Contains(result, "https://grimora.ai") {
-		t.Errorf("expected URL preserved in rendered body, got: %q", result)
+		t.Errorf("expected URL preserved verbatim, got: %q", result)
 	}
 }
 
-func TestLongURLMessageWraps(t *testing.T) {
+func TestLinkifyURLsShortURL(t *testing.T) {
+	body := "check https://grimora.ai for details"
+	result := linkifyURLs(body, 80)
+	// Short URL should be fully visible with OSC 8.
+	if !strings.Contains(result, "\033]8;;https://grimora.ai\a") {
+		t.Errorf("expected OSC 8 target, got: %q", result)
+	}
+	if !strings.Contains(result, "https://grimora.ai\033]8;;\a") {
+		t.Errorf("expected full URL as display text, got: %q", result)
+	}
+}
+
+func TestLinkifyURLsTruncatesLongURL(t *testing.T) {
+	url := "https://github.com/naveenspark/grimora/releases/tag/v0.4.0-with-extra-long-path"
+	body := "see " + url
+	result := linkifyURLs(body, 30)
+	// Full URL should be in OSC 8 target.
+	if !strings.Contains(result, "\033]8;;"+url+"\a") {
+		t.Errorf("expected full URL in OSC 8 target, got: %q", result)
+	}
+	// Display text should be truncated with ellipsis.
+	if !strings.Contains(result, "…") {
+		t.Errorf("expected ellipsis in truncated display, got: %q", result)
+	}
+	// Display text should NOT contain the full URL.
+	if strings.Contains(result, url+"\033]8;;\a") {
+		t.Errorf("display text should be truncated, not full URL, got: %q", result)
+	}
+}
+
+func TestStripTrailingSpaces(t *testing.T) {
+	input := "hello   \nworld  \nfoo"
+	want := "hello\nworld\nfoo"
+	got := stripTrailingSpaces(input)
+	if got != want {
+		t.Errorf("stripTrailingSpaces(%q) = %q, want %q", input, got, want)
+	}
+}
+
+func TestLinkifyURLsZeroWidth(t *testing.T) {
+	body := "see https://grimora.ai"
+	got := linkifyURLs(body, 0)
+	if got != body {
+		t.Errorf("linkifyURLs with maxWidth=0 should return body unchanged, got: %q", got)
+	}
+}
+
+func TestMentionInsideOSC8Preserved(t *testing.T) {
+	// A URL with @ should not have its @-part styled as a mention.
+	linkified := linkifyURLs("connect via https://user@host.example.com/path ok", 80)
+	result := renderBodyWithMentions(linkified, "me", false)
+	// The OSC 8 target must be intact (not corrupted by mention styling).
+	if !strings.Contains(result, "\033]8;;https://user@host.example.com/path\a") {
+		t.Errorf("OSC 8 target corrupted by mention styling: %q", result)
+	}
+}
+
+func TestLongURLMessageTruncatesDisplay(t *testing.T) {
 	m := newTestHallModel()
 	m.myLogin = "me"
 	m.width = 60
 
+	fullURL := "https://github.com/naveenspark/grimora/releases/tag/v0.4.0-with-extra-long-path-that-exceeds-terminal"
 	msg := chatMessage{
 		ID:          "url-1",
 		SenderLogin: "alice",
-		Body:        "https://github.com/naveenspark/grimora/releases/tag/v0.4.0-with-extra-long-path-that-exceeds-terminal",
+		Body:        fullURL,
 		Kind:        "message",
 		CreatedAt:   time.Now(),
 	}
 
 	rendered := m.renderMessage(msg)
-	// Should contain newlines from wrapping.
-	if !strings.Contains(rendered, "\n") {
-		t.Errorf("long URL message should wrap, got single line: %q", rendered)
+	// Full URL should be in OSC 8 target (clickable).
+	if !strings.Contains(rendered, "\033]8;;"+fullURL+"\a") {
+		t.Errorf("expected full URL in OSC 8 target, got: %q", rendered)
+	}
+	// Display should be truncated (ellipsis present).
+	if !strings.Contains(rendered, "…") {
+		t.Errorf("expected truncated display with ellipsis, got: %q", rendered)
 	}
 }
 
