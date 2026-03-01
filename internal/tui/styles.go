@@ -234,6 +234,11 @@ var (
 			Foreground(lipgloss.Color("#606878")).
 			Italic(true)
 
+	// Leave announcement style — dimmer mirror of join
+	leaveLabelStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#606878")).
+			Italic(true)
+
 	presenceTitleStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#8890a0")).
 				Bold(true)

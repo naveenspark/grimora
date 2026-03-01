@@ -372,7 +372,7 @@ func (m hallModel) Update(msg tea.Msg) (hallModel, tea.Cmd) {
 				}
 				for _, l := range m.presenceLogins {
 					if !newSet[l] && l != m.myLogin {
-						m.messages = append(m.messages, chatMessage{IsSystem: true, Body: l + " left"})
+						m.messages = append(m.messages, chatMessage{Kind: "leave", SenderLogin: l})
 					}
 				}
 			}
@@ -846,6 +846,8 @@ func (m hallModel) renderMessage(msg chatMessage) string {
 		return m.renderCast(msg)
 	case "join":
 		return m.renderJoin(msg)
+	case "leave":
+		return m.renderLeave(msg)
 	}
 
 	// Default: plain message
@@ -984,6 +986,13 @@ func (m hallModel) renderJoin(msg chatMessage) string {
 		line += "  " + joinDetailStyle.Render(detail)
 	}
 	return line
+}
+
+// renderLeave renders a departure notice when someone disconnects from the room.
+func (m hallModel) renderLeave(msg chatMessage) string {
+	label := leaveLabelStyle.Render("✧ a soul departs")
+	name := dimStyle.Render(msg.SenderLogin)
+	return " " + label + "  " + name
 }
 
 // potencyFromStr converts a string potency to int, defaulting to 1.
